@@ -79,6 +79,9 @@ package idma_pkg;
         logic [2:0] dst_max_llen;
         logic       src_reduce_len;
         logic       dst_reduce_len;
+        logic [31:0] axpy_alpha;
+        logic [31:0] sec_src_addr;
+        logic [31:0] multihead_opcode;
     } backend_options_t;
 
     /// Supported Protocols
@@ -96,6 +99,9 @@ package idma_pkg;
         INIT       = 'd4,
         AXI_STREAM = 'd5
     } protocol_e;
+
+    /// Multihead channel selection type
+    typedef logic[7:0] multihead_t;
 
     /// Supported Protocols type
     typedef logic[1:0] protocol_t;
