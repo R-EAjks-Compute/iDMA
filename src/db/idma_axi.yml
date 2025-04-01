@@ -78,7 +78,7 @@ read_template: |
         .ar_chan_t  ( read_meta_channel_t ),
         .read_req_t ( ${req_t}           ),
         .read_rsp_t ( ${rsp_t}           )
-    ) i_idma_axi_read (
+    ) i_idma_axi_read${mh} (
         .clk_i             ( clk_i      ),
         .rst_ni            ( rst_ni     ),
         .r_dp_req_i        ( r_dp_req_i ),
@@ -110,7 +110,7 @@ write_template: |
         .aw_chan_t       ( write_meta_channel_t ),
         .write_req_t     ( ${req_t} ),
         .write_rsp_t     ( ${rsp_t} )
-    ) i_idma_axi_write (
+    ) i_idma_axi_write${mh} (
         .clk_i              ( clk_i      ),
         .rst_ni             ( rst_ni     ),
         .w_dp_req_i         ( w_dp_req_i ),
