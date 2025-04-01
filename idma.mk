@@ -22,13 +22,13 @@ SHELL := /bin/bash
 
 # iDMA Variants
 IDMA_BASE_IDS    := \
-					rw_axi \
-					r_obi_w_axi \
-					r_axi_w_obi \
-					rw_axi_rw_axis
-IDMA_OCCAMY_IDS  := \
-					r_obi_rw_init_w_axi \
-					r_axi_rw_init_rw_obi
+					r_axi_r_obi_w_axi #\
+					# r_obi_w_axi \
+					# r_axi_w_obi \
+					# rw_axi_rw_axis
+IDMA_OCCAMY_IDS  := # \
+					# r_obi_rw_init_w_axi \
+					# r_axi_rw_init_rw_obi
 IDMA_ADD_IDS     ?=
 IDMA_BACKEND_IDS := $(IDMA_BASE_IDS) $(IDMA_OCCAMY_IDS) $(IDMA_ADD_IDS)
 

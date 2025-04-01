@@ -9,6 +9,37 @@
 `include "idma/guard.svh"
 `include "common_cells/registers.svh"
 
+<%def name="assignment_semicolon(signal_name, type='logic')">${type} \
+% for index, protocol in enumerate(used_read_protocols):
+    % if used_read_protocols_count[index] == 1:
+${protocol}_${signal_name}\
+    % else:
+    % for count in range(used_read_protocols_count[index] - 1):
+${protocol}_${signal_name}_${count}, \
+    % endfor
+${protocol}_${signal_name}_${used_read_protocols_count[index] - 1}\
+    % endif
+    % if index == len(used_read_protocols)-1:
+;
+    % else:
+, \
+    % endif
+%endfor
+</%def>
+
+<%def name="assignment_comma(signal_name, type='logic')">${type} \
+% for index, protocol in enumerate(used_read_protocols):
+    % if used_read_protocols_count[index] == 1:
+${protocol}_${signal_name}, \
+    % else:
+        % for count in range(used_read_protocols_count[index]):
+${protocol}_${signal_name}_${count}, \
+        % endfor
+    % endif
+%endfor
+</%def>
+
+
 /// Implementing the transport layer in the iDMA backend.
 module idma_transport_layer_${name_uniqueifier} #(
     /// Number of transaction that can be in-flight concurrently
@@ -195,13 +226,9 @@ _rsp_t ${protocol}_write_rsp_i,
     typedef logic [7:0] byte_t;
 
     // inbound control signals to the read buffer: controlled by the read process
-    strb_t\
 % if not one_read_port:
-    % for p in used_read_protocols:
- ${p}_buffer_in_valid,\
-    % endfor
+    ${assignment_comma("buffer_in_valid", "strb_t")}buffer_in_valid;
 % endif
- buffer_in_valid;
 
     strb_t buffer_in_ready;
     // outbound control signals of the buffer: controlled by the write process
@@ -216,74 +243,30 @@ _rsp_t ${protocol}_write_rsp_i,
         buffer_out_ready, buffer_out_ready_shifted;
 
     // shifted data flowing into the buffer
-    byte_t [StrbWidth-1:0]\
-% if not one_read_port:
-    % for p in used_read_protocols:
- ${p}_buffer_in,\
-    % endfor
-% endif
+    ${assignment_comma("buffer_in", "byte_t [StrbWidth-1:0]")}buffer_in, buffer_in_shifted;
 
-        buffer_in, buffer_in_shifted;
     // aligned and coalesced data leaving the buffer
     byte_t [StrbWidth-1:0] buffer_out, buffer_out_shifted;
 % if not one_read_port:
 
     // Read multiplexed signals
-    logic\
+    ${assignment_semicolon("r_chan_valid")}\
+    ${assignment_semicolon("r_chan_ready")}\
+    ${assignment_semicolon("r_dp_valid")}\
+    ${assignment_semicolon("r_dp_ready")}\
+    ${assignment_semicolon("r_dp_rsp", "r_dp_rsp_t")}
+    ${assignment_semicolon("ar_ready")}
+
     % for index, protocol in enumerate(used_read_protocols):
- ${protocol}_r_chan_valid\
-        % if index == len(used_read_protocols)-1:
-;
-        % else:
-,\
-        % endif
-    %endfor
-    logic\
-    % for index, protocol in enumerate(used_read_protocols):
- ${protocol}_r_chan_ready\
-        % if index == len(used_read_protocols)-1:
-;
-        % else:
-,\
-        % endif
-    %endfor
-    logic\
-    % for index, protocol in enumerate(used_read_protocols):
- ${protocol}_r_dp_valid\
-        % if index == len(used_read_protocols)-1:
-;
-        % else:
-,\
-        % endif
-    %endfor
-    logic\
-    % for index, protocol in enumerate(used_read_protocols):
- ${protocol}_r_dp_ready\
-        % if index == len(used_read_protocols)-1:
-;
-        % else:
-,\
-        % endif
-    %endfor
-    r_dp_rsp_t\
-    % for index, protocol in enumerate(used_read_protocols):
- ${protocol}_r_dp_rsp\
-        % if index == len(used_read_protocols)-1:
-;
-        % else:
-,\
+        % if used_read_protocols_count[index] > 1:
+    ${protocol}_req_t \
+            % for count in range(used_read_protocols_count[index] - 1):
+${protocol}_read_req_o_${count}, \
+            % endfor
+${protocol}_read_req_o_${used_read_protocols_count[index] - 1};
         % endif
     %endfor
 
-    logic\
-    % for index, protocol in enumerate(used_read_protocols):
- ${protocol}_ar_ready\
-        % if index == len(used_read_protocols)-1:
-;
-        % else:
-,\
-        % endif
-    %endfor
 % endif
 % if not one_write_port:
 
@@ -362,8 +345,12 @@ ${rendered_read_ports[read_port]}
 
     always_comb begin : gen_read_meta_channel_multiplexer
         case(ar_req_i.src_protocol)
-% for rp in used_read_protocols:
+% for index, rp in enumerate(used_read_protocols):
+    % if used_read_protocols_count[index] == 1:
         idma_pkg::${database[rp]['protocol_enum']}: ar_ready_o = ${rp}_ar_ready;
+    % else:
+        idma_pkg::${database[rp]['protocol_enum']}: ar_ready_o = ${rp}_ar_ready_0;
+    % endif
 % endfor
         default:       ar_ready_o = 1'b0;
         endcase
@@ -372,17 +359,35 @@ ${rendered_read_ports[read_port]}
     always_comb begin : gen_read_multiplexer
         if (r_dp_valid_i) begin
             case(r_dp_req_i.src_protocol)
-% for rp in used_read_protocols:
+% for index, rp in enumerate(used_read_protocols):
             idma_pkg::${database[rp]['protocol_enum']}: begin
+                % if used_read_protocols_count[index] == 1:
                 r_chan_valid_o  = ${rp}_r_chan_valid;
                 r_chan_ready_o  = ${rp}_r_chan_ready;
 
-                r_dp_ready_o    = ${rp}_r_dp_ready;
-                r_dp_rsp_o      = ${rp}_r_dp_rsp;
-                r_dp_valid_o    = ${rp}_r_dp_valid;
+                    r_dp_ready_o    = ${rp}_r_dp_ready;
+                    r_dp_rsp_o      = ${rp}_r_dp_rsp;
+                    r_dp_valid_o    = ${rp}_r_dp_valid;
 
                 buffer_in       = ${rp}_buffer_in;
                 buffer_in_valid = ${rp}_buffer_in_valid;
+                % else:
+                case(r_dp_req_i.src_address)
+                % for count in range(used_read_protocols_count[index]):
+                ${count}: begin
+                    r_chan_valid_o  = ${rp}_r_chan_valid_${count};
+                    r_chan_ready_o  = ${rp}_r_chan_ready_${count};
+
+                    r_dp_ready_o    = ${rp}_r_dp_ready_${count};
+                    r_dp_rsp_o      = ${rp}_r_dp_rsp_${count};
+                    r_dp_valid_o    = ${rp}_r_dp_valid_${count};
+
+                    buffer_in       = ${rp}_buffer_in_${count};
+                    buffer_in_valid = ${rp}_buffer_in_valid_${count};
+                end 
+                % endfor
+                endcase
+                % endif
             end
 % endfor
             default: begin
