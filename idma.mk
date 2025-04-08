@@ -22,6 +22,7 @@ SHELL := /bin/bash
 
 # iDMA Variants
 IDMA_BASE_IDS    := \
+		    			rw_axi \
 					r_axi_r_obi_w_axi #\
 					# r_obi_w_axi \
 					# r_axi_w_obi \

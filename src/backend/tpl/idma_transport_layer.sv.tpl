@@ -342,6 +342,8 @@ ${rendered_read_ports[read_port]}
     //--------------------------------------
     // Read Multiplexers
     //--------------------------------------
+    // to be put in some multiplexer later
+    assign axi_read_req_o = axi_read_req_o_0;
 
     always_comb begin : gen_read_meta_channel_multiplexer
         case(ar_req_i.src_protocol)
@@ -372,21 +374,16 @@ ${rendered_read_ports[read_port]}
                 buffer_in       = ${rp}_buffer_in;
                 buffer_in_valid = ${rp}_buffer_in_valid;
                 % else:
-                case(r_dp_req_i.src_address)
-                % for count in range(used_read_protocols_count[index]):
-                ${count}: begin
-                    r_chan_valid_o  = ${rp}_r_chan_valid_${count};
-                    r_chan_ready_o  = ${rp}_r_chan_ready_${count};
+                    // To be changed later using another multiplexer for the same protocol.
+                    r_chan_valid_o  = ${rp}_r_chan_valid_0;
+                    r_chan_ready_o  = ${rp}_r_chan_ready_0;
 
-                    r_dp_ready_o    = ${rp}_r_dp_ready_${count};
-                    r_dp_rsp_o      = ${rp}_r_dp_rsp_${count};
-                    r_dp_valid_o    = ${rp}_r_dp_valid_${count};
+                    r_dp_ready_o    = ${rp}_r_dp_ready_0;
+                    r_dp_rsp_o      = ${rp}_r_dp_rsp_0;
+                    r_dp_valid_o    = ${rp}_r_dp_valid_0;
 
-                    buffer_in       = ${rp}_buffer_in_${count};
-                    buffer_in_valid = ${rp}_buffer_in_valid_${count};
-                end 
-                % endfor
-                endcase
+                    buffer_in       = ${rp}_buffer_in_0;
+                    buffer_in_valid = ${rp}_buffer_in_valid_0;
                 % endif
             end
 % endfor
