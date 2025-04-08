@@ -39,6 +39,34 @@ ${protocol}_${signal_name}_${count}, \
 %endfor
 </%def>
 
+<%def name="requests(read_write, protocol)">\
+<% 
+    req_io_mode = 'input' if database[protocol]['passive_req'] == 'true' else 'output'
+    rsp_io_mode = 'output' if database[protocol]['passive_req'] == 'true' else 'input'
+    read_slave = 'read_' if database[protocol]['read_slave'] == 'true' else ''
+    if read_write == 'read':
+        index = used_read_protocols.index(protocol)
+        count = used_read_protocols_count[index]
+    else:
+        count = 1 # Write not yet implemented
+%>\
+% if count == 1:
+    /// ${database[protocol]['full_name']} ${read_write} request
+    ${req_io_mode} ${protocol}_${read_slave}req_t ${protocol}_${read_write}_${req_io_mode[0]},
+    /// ${database[protocol]['full_name']} ${read_write} response
+    ${rsp_io_mode} ${protocol}_${read_slave}rsp_t ${protocol}_${read_write}_${rsp_io_mode[0]}
+% else:
+    /// ${database[protocol]['full_name']} ${read_write} requests
+    % for i in range(count):
+    ${req_io_mode} ${protocol}_${read_slave}req_t ${protocol}_${read_write}_${req_io_mode[0]}_${i},
+    % endfor    
+    /// ${database[protocol]['full_name']} ${read_write} responses
+    % for i in range(count):
+    ${rsp_io_mode} ${protocol}_${read_slave}rsp_t ${protocol}_${read_write}_${rsp_io_mode[0]}_${i},
+    % endfor
+% endif
+</%def>
+
 
 /// Implementing the transport layer in the iDMA backend.
 module idma_transport_layer_${name_uniqueifier} #(
@@ -103,51 +131,12 @@ module idma_transport_layer_${name_uniqueifier} #(
     input  logic rst_ni,
     /// Testmode in
     input  logic testmode_i,
-% for protocol in used_read_protocols:
 
-    /// ${database[protocol]['full_name']} read request
-% if database[protocol]['passive_req'] == 'true':
-    input  ${protocol}\
-% if database[protocol]['read_slave'] == 'true':
-_read\
-% endif
-_req_t ${protocol}_read_req_i,
-% else:
-    output ${protocol}\
-% if database[protocol]['read_slave'] == 'true':
-_read\
-% endif
-_req_t ${protocol}_read_req_o,
-% endif
-    /// ${database[protocol]['full_name']} read response
-% if database[protocol]['passive_req'] == 'true':
-    output ${protocol}\
-% if database[protocol]['read_slave'] == 'true':
-_read\
-% endif
-_rsp_t ${protocol}_read_rsp_o,
-% else:
-    input  ${protocol}\
-% if database[protocol]['read_slave'] == 'true':
-_read\
-% endif
-_rsp_t ${protocol}_read_rsp_i,
-% endif
+% for protocol in used_read_protocols:
+${requests("read", protocol)}
 % endfor
 % for protocol in used_write_protocols:
-
-    /// ${database[protocol]['full_name']} write request
-    output ${protocol}\
-% if database[protocol]['read_slave'] == 'true':
-_write\
-% endif
-_req_t ${protocol}_write_req_o,
-    /// ${database[protocol]['full_name']} write response
-    input  ${protocol}\
-% if database[protocol]['read_slave'] == 'true':
-_write\
-% endif
-_rsp_t ${protocol}_write_rsp_i,
+${requests("write", protocol)}
 % endfor
 
     /// Read datapath request
