@@ -35,6 +35,7 @@ def render_backend(prot_ids: dict, db: dict, tpl_file: str) -> str:
             'name_uniqueifier': prot_id,
             'database': db,
             'used_read_protocols': used_read_prots,
+            "used_read_protocols_count": [2, 1], # TO BE CHANGED
             'used_write_protocols': used_write_prots,
             'used_protocols': prot_ids[prot_id]['used'],
             'one_read_port': srp,

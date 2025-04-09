@@ -121,7 +121,7 @@ read_template_multiple_ports: |
       .ar_valid_i        ( ${read_meta_valid} ),
       .ar_ready_o        ( ${read_meta_ready}_${port} ),
       .read_req_o        ( ${read_request}_${port} ),
-      .read_rsp_i        ( ${read_response} ),
+      .read_rsp_i        ( ${read_response}_${port} ),
       .r_chan_valid_o    ( ${r_chan_valid}_${port} ),
       .r_chan_ready_o    ( ${r_chan_ready}_${port} ),
       .buffer_in_o       ( ${buffer_in}_${port} ),

@@ -48,21 +48,23 @@ ${protocol}_${signal_name}_${count}, \
         index = used_read_protocols.index(protocol)
         count = used_read_protocols_count[index]
     else:
+        req_io_mode = 'output'
+        rsp_io_mode = 'input'
         count = 1 # Write not yet implemented
 %>\
 % if count == 1:
     /// ${database[protocol]['full_name']} ${read_write} request
-    ${req_io_mode} ${protocol}_${read_slave}req_t ${protocol}_${read_write}_${req_io_mode[0]},
+    ${req_io_mode} ${protocol}_${read_slave}req_t ${protocol}_${read_write}_req_${req_io_mode[0]},
     /// ${database[protocol]['full_name']} ${read_write} response
-    ${rsp_io_mode} ${protocol}_${read_slave}rsp_t ${protocol}_${read_write}_${rsp_io_mode[0]}
+    ${rsp_io_mode} ${protocol}_${read_slave}rsp_t ${protocol}_${read_write}_rsp_${rsp_io_mode[0]},
 % else:
     /// ${database[protocol]['full_name']} ${read_write} requests
     % for i in range(count):
-    ${req_io_mode} ${protocol}_${read_slave}req_t ${protocol}_${read_write}_${req_io_mode[0]}_${i},
+    ${req_io_mode} ${protocol}_${read_slave}req_t ${protocol}_${read_write}_req_${req_io_mode[0]}_${i},
     % endfor    
     /// ${database[protocol]['full_name']} ${read_write} responses
     % for i in range(count):
-    ${rsp_io_mode} ${protocol}_${read_slave}rsp_t ${protocol}_${read_write}_${rsp_io_mode[0]}_${i},
+    ${rsp_io_mode} ${protocol}_${read_slave}rsp_t ${protocol}_${read_write}_rsp_${rsp_io_mode[0]}_${i},
     % endfor
 % endif
 </%def>
@@ -245,17 +247,6 @@ ${requests("write", protocol)}
     ${assignment_semicolon("r_dp_ready")}\
     ${assignment_semicolon("r_dp_rsp", "r_dp_rsp_t")}
     ${assignment_semicolon("ar_ready")}
-
-    % for index, protocol in enumerate(used_read_protocols):
-        % if used_read_protocols_count[index] > 1:
-    ${protocol}_req_t \
-            % for count in range(used_read_protocols_count[index] - 1):
-${protocol}_read_req_o_${count}, \
-            % endfor
-${protocol}_read_req_o_${used_read_protocols_count[index] - 1};
-        % endif
-    %endfor
-
 % endif
 % if not one_write_port:
 
