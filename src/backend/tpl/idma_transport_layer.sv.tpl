@@ -234,7 +234,7 @@ ${requests("write", protocol)}
         buffer_out_ready, buffer_out_ready_shifted;
 
     // shifted data flowing into the buffer
-    ${assignment_comma("buffer_in", "byte_t [StrbWidth-1:0]")}buffer_in, buffer_in_shifted;
+    byte_t [StrbWidth-1:0] buffer_in_0, buffer_in_1, buffer_in, buffer_in_shifted;
 
     // aligned and coalesced data leaving the buffer
     byte_t [StrbWidth-1:0] buffer_out, buffer_out_shifted;
@@ -316,7 +316,6 @@ ${requests("write", protocol)}
 
 % for read_port in used_read_protocols:
 ${rendered_read_ports[read_port]}
-
 % endfor
 % if not one_read_port:
     //--------------------------------------
@@ -396,6 +395,8 @@ ${rendered_read_ports[read_port]}
     //--------------------------------------
     // Read Barrel shifter
     //--------------------------------------
+
+    assign buffer_in = buffer_in_0 + buffer_in_1;
 
     assign buffer_in_shifted = {buffer_in, buffer_in} >> (r_dp_req_i.shift * 8);
 
