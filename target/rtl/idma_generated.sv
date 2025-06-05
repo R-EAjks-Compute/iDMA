@@ -12,13 +12,13 @@
 /// Implementing the transport layer in the iDMA backend.
 module idma_transport_layer_r_obi_w_obi #(
     /// Number of transaction that can be in-flight concurrently
-    parameter int unsigned NumAxInFlight = 32'd2,
+    parameter int unsigned NumAxInFlight = 32'd4,
     /// Data width
-    parameter int unsigned DataWidth = 32'd16,
+    parameter int unsigned DataWidth = 32'd32,
     /// The depth of the internal reorder buffer:
     /// - '2': minimal possible configuration
     /// - '3': efficiently handle misaligned transfers (recommended)
-    parameter int unsigned BufferDepth = 32'd3,
+    parameter int unsigned BufferDepth = 32'd512,
     /// Mask invalid data on the manager interface
     parameter bit MaskInvalidData = 1'b1,
     /// Print the info of the FIFO configuration
@@ -210,14 +210,14 @@ module idma_transport_layer_r_obi_w_obi #(
         .read_req_t       ( obi_req_t           ),
         .read_rsp_t       ( obi_rsp_t           )
     ) i_idma_obi_read_1 (
-        .r_dp_req_i        ( r_dp_req_i_0 ),
-        .r_dp_valid_i      ( r_dp_valid_i_0 ),
+        .r_dp_req_i        ( r_dp_req_i_1 ),
+        .r_dp_valid_i      ( r_dp_valid_i_1 ), // TODO: FIX
         .r_dp_ready_o      ( r_dp_ready_o_1 ),
         .r_dp_rsp_o        ( r_dp_rsp_o_1 ),
         .r_dp_valid_o      ( r_dp_valid_o_1 ),
-        .r_dp_ready_i      ( r_dp_ready_i_0 ),
+        .r_dp_ready_i      ( r_dp_ready_i_0 ), // TODO: FIX
         .read_meta_req_i   ( ar_req_i_1 ),
-        .read_meta_valid_i ( ar_valid_i_0 ),
+        .read_meta_valid_i ( ar_valid_i_1 ), // TODO: FIX
         .read_meta_ready_o ( ar_ready_o_1 ),
         .read_req_o        ( obi_read_req_o_1 ),
         .read_rsp_i        ( obi_read_rsp_i_1 ),
@@ -234,7 +234,9 @@ module idma_transport_layer_r_obi_w_obi #(
     //--------------------------------------
     // Read Barrel shifter
     //--------------------------------------
-    assign buffer_in = buffer_in_0;
+    logic [31:0] buffer_math_result;
+    assign buffer_math_result = (r_dp_req_i_1.axpy_alpha * buffer_in_0) + buffer_in_1;
+    assign buffer_in = buffer_math_result;
 
     assign buffer_in_shifted = {buffer_in, buffer_in} >> (r_dp_req_i_0.shift * 8);
     assign buffer_in_valid = buffer_in_valid_0 & buffer_in_valid_1;
@@ -648,7 +650,8 @@ module idma_legalizer_r_obi_w_obi #(
         tailer:       OffsetWidth'(r_num_bytes + r_addr_offset),
         shift:        opt_tf_q.read_shift,
         decouple_aw:  opt_tf_q.decouple_aw,
-        is_single:    r_num_bytes <= StrbWidth
+        is_single:    r_num_bytes <= StrbWidth, 
+        axpy_alpha:   req_i.opt.beo.axpy_alpha
     };
     assign r_req_o_1.r_dp_req = r_req_o.r_dp_req;
 
@@ -760,7 +763,7 @@ module idma_backend_r_obi_w_obi #(
     /// The depth of the internal reorder buffer:
     /// - '2': minimal possible configuration
     /// - '3': efficiently handle misaligned transfers (recommended)
-    parameter int unsigned BufferDepth      = 32'd2,
+    parameter int unsigned BufferDepth      = 32'd3,
     /// With of a transfer: max transfer size is `2**TFLenWidth` bytes
     parameter int unsigned TFLenWidth       = 32'd24,
     /// The depth of the memory system the backend is attached to
@@ -884,6 +887,7 @@ module idma_backend_r_obi_w_obi #(
         offset_t             shift;
         logic                decouple_aw;
         logic                is_single;
+        logic [31:0]         axpy_alpha;
     } r_dp_req_t;
 
     /// The datapath read response type provides feedback from the read part of the datapath:
@@ -1012,7 +1016,7 @@ module idma_backend_r_obi_w_obi #(
     write_meta_channel_t aw_req_dp;
 
     // Ax request from the decoupling stage to the datapath
-    read_meta_channel_t ar_req_dp;
+    read_meta_channel_t ar_req_dp, ar_req_dp_1;
 
     // flush and preemptively empty the legalizer
     logic legalizer_flush, legalizer_kill;
@@ -1127,7 +1131,8 @@ module idma_backend_r_obi_w_obi #(
             tailer:      OffsetWidth'(idma_req_i.length + idma_req_i.src_addr[OffsetWidth-1:0]),
             shift:       OffsetWidth'(idma_req_i.src_addr[OffsetWidth-1:0]),
             decouple_aw: idma_req_i.opt.beo.decouple_aw,
-            is_single:   len == '0
+            is_single:   len == '0,
+            axpy_alpha:  idma_req_i.opt.beo.axpy_alpha
         };
 
         // assemble write datapath request
@@ -1918,6 +1923,11 @@ package idma_reg32_1d_reg_pkg;
     logic [31:0] d;
   } idma_reg32_1d_hw2reg_done_id_mreg_t;
 
+  typedef struct packed {
+    logic [31:0] axpy_alpha;
+  } idma_reg32_1d_reg2hw_multihead_reg_t;
+  
+
   // Register -> HW type
   typedef struct packed {
     idma_reg32_1d_reg2hw_conf_reg_t conf; // [640:624]
@@ -1925,6 +1935,7 @@ package idma_reg32_1d_reg_pkg;
     idma_reg32_1d_reg2hw_dst_addr_low_reg_t dst_addr_low; // [95:64]
     idma_reg32_1d_reg2hw_src_addr_low_reg_t src_addr_low; // [63:32]
     idma_reg32_1d_reg2hw_length_low_reg_t length_low; // [31:0]
+    idma_reg32_1d_reg2hw_multihead_reg_t multihead;
   } idma_reg32_1d_reg2hw_t;
 
   // HW -> register type
@@ -1987,6 +1998,7 @@ package idma_reg32_1d_reg_pkg;
   parameter logic [BlockAw-1:0] IDMA_REG32_1D_DST_ADDR_LOW_OFFSET = 8'h d0;
   parameter logic [BlockAw-1:0] IDMA_REG32_1D_SRC_ADDR_LOW_OFFSET = 8'h d8;
   parameter logic [BlockAw-1:0] IDMA_REG32_1D_LENGTH_LOW_OFFSET = 8'h e0;
+  parameter logic [BlockAw-1:0] IDMA_REG32_1D_AXPY_ALPHA_OFFSET = 8'h f0;
 
   // Reset values for hwext registers and their fields
   parameter logic [9:0] IDMA_REG32_1D_STATUS_0_RESVAL = 10'h 0;
@@ -2091,11 +2103,12 @@ package idma_reg32_1d_reg_pkg;
     IDMA_REG32_1D_DONE_ID_15,
     IDMA_REG32_1D_DST_ADDR_LOW,
     IDMA_REG32_1D_SRC_ADDR_LOW,
-    IDMA_REG32_1D_LENGTH_LOW
+    IDMA_REG32_1D_LENGTH_LOW, 
+    IDMA_REG32_1D_AXPY_ALPHA
   } idma_reg32_1d_id_e;
 
   // Register width information to check illegal writes
-  parameter logic [3:0] IDMA_REG32_1D_PERMIT [52] = '{
+  parameter logic [3:0] IDMA_REG32_1D_PERMIT [53] = '{
     4'b 0111, // index[ 0] IDMA_REG32_1D_CONF
     4'b 0011, // index[ 1] IDMA_REG32_1D_STATUS_0
     4'b 0011, // index[ 2] IDMA_REG32_1D_STATUS_1
@@ -2147,7 +2160,8 @@ package idma_reg32_1d_reg_pkg;
     4'b 1111, // index[48] IDMA_REG32_1D_DONE_ID_15
     4'b 1111, // index[49] IDMA_REG32_1D_DST_ADDR_LOW
     4'b 1111, // index[50] IDMA_REG32_1D_SRC_ADDR_LOW
-    4'b 1111  // index[51] IDMA_REG32_1D_LENGTH_LOW
+    4'b 1111, // index[51] IDMA_REG32_1D_LENGTH_LOW
+    4'b 1111  // index[52] IDMA_REG32_1D_AXPY_ALPHA
   };
 
 endpackage
@@ -2613,6 +2627,9 @@ module idma_reg32_1d_reg_top #(
   logic [31:0] length_low_qs;
   logic [31:0] length_low_wd;
   logic length_low_we;
+  logic [31:0] axpy_alpha_qs;
+  logic [31:0] axpy_alpha_wd;
+  logic axpy_alpha_we;
 
   // Register instances
   // R[conf]: V(False)
@@ -3705,10 +3722,34 @@ module idma_reg32_1d_reg_top #(
     .qs     (length_low_qs)
   );
 
+  // Axpy Alpha
+  prim_subreg #(
+    .DW      (32),
+    .SWACCESS("RW"),
+    .RESVAL  (32'h0)
+  ) u_axpy_alpha (
+    .clk_i   (clk_i    ),
+    .rst_ni  (rst_ni  ),
+
+    // from register interface
+    .we     (axpy_alpha_we),
+    .wd     (axpy_alpha_wd),
+
+    // from internal hardware
+    .de     (1'b0),
+    .d      ('0  ),
+
+    // to internal hardware
+    .qe     (),
+    .q      (reg2hw.multihead.axpy_alpha ),
+
+    // to register interface (read)
+    .qs     (axpy_alpha_qs)
+  );
 
 
 
-  logic [51:0] addr_hit;
+  logic [52:0] addr_hit;
   always_comb begin
     addr_hit = '0;
     addr_hit[ 0] = (reg_addr == IDMA_REG32_1D_CONF_OFFSET);
@@ -3763,6 +3804,7 @@ module idma_reg32_1d_reg_top #(
     addr_hit[49] = (reg_addr == IDMA_REG32_1D_DST_ADDR_LOW_OFFSET);
     addr_hit[50] = (reg_addr == IDMA_REG32_1D_SRC_ADDR_LOW_OFFSET);
     addr_hit[51] = (reg_addr == IDMA_REG32_1D_LENGTH_LOW_OFFSET);
+    addr_hit[52] = (reg_addr == IDMA_REG32_1D_AXPY_ALPHA_OFFSET);
   end
 
   assign addrmiss = (reg_re || reg_we) ? ~|addr_hit : 1'b0 ;
@@ -3821,7 +3863,8 @@ module idma_reg32_1d_reg_top #(
                (addr_hit[48] & (|(IDMA_REG32_1D_PERMIT[48] & ~reg_be))) |
                (addr_hit[49] & (|(IDMA_REG32_1D_PERMIT[49] & ~reg_be))) |
                (addr_hit[50] & (|(IDMA_REG32_1D_PERMIT[50] & ~reg_be))) |
-               (addr_hit[51] & (|(IDMA_REG32_1D_PERMIT[51] & ~reg_be)))));
+               (addr_hit[51] & (|(IDMA_REG32_1D_PERMIT[51] & ~reg_be))) |
+               (addr_hit[52] & (|(IDMA_REG32_1D_PERMIT[52] & ~reg_be)))));
   end
 
   assign conf_decouple_aw_we = addr_hit[0] & reg_we & !reg_error;
@@ -3955,6 +3998,9 @@ module idma_reg32_1d_reg_top #(
 
   assign length_low_we = addr_hit[51] & reg_we & !reg_error;
   assign length_low_wd = reg_wdata[31:0];
+
+  assign axpy_alpha_we = addr_hit[52] & reg_we & !reg_error;
+  assign axpy_alpha_wd = reg_wdata[31:0];
 
   // Read data return
   always_comb begin
@@ -4176,6 +4222,10 @@ module idma_reg32_1d_reg_top #(
         reg_rdata_next[31:0] = length_low_qs;
       end
 
+      addr_hit[52]: begin
+        reg_rdata_next[31:0] = axpy_alpha_qs;
+      end
+
       default: begin
         reg_rdata_next = '1;
       end
@@ -4380,9 +4430,10 @@ module idma_reg32_1d #(
       arb_dma_req[i].opt.beo.decouple_aw    = dma_reg2hw[i].conf.decouple_aw.q;
       arb_dma_req[i].opt.beo.decouple_rw    = dma_reg2hw[i].conf.decouple_rw.q;
       arb_dma_req[i].opt.beo.src_max_llen   = dma_reg2hw[i].conf.src_max_llen.q;
-      arb_dma_req[i].opt.beo.dst_max_llen   = dma_reg2hw[i].conf.dst_max_llen.q;
+      arb_dma_req[i].opt.beo.dst_max_llen   = dma_reg2hw[i].conf.dst_max_llen.q;    
       arb_dma_req[i].opt.beo.src_reduce_len = dma_reg2hw[i].conf.src_reduce_len.q;
       arb_dma_req[i].opt.beo.dst_reduce_len = dma_reg2hw[i].conf.dst_reduce_len.q;
+      arb_dma_req[i].opt.beo.axpy_alpha = dma_reg2hw[i].multihead.axpy_alpha;
 
     end
 
