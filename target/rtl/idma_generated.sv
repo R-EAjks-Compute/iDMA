@@ -234,9 +234,15 @@ module idma_transport_layer_r_obi_w_obi #(
     //--------------------------------------
     // Read Barrel shifter
     //--------------------------------------
-    logic [31:0] buffer_math_result;
-    assign buffer_math_result = (r_dp_req_i_1.axpy_alpha * buffer_in_0) + buffer_in_1;
-    assign buffer_in = buffer_math_result;
+    logic [31:0] buffer_alpha;
+    logic [31:0] buffer_result;
+
+    always_comb begin
+        buffer_in = (r_dp_req_i_0.multihead_opcode[0] === 1'b1) ? buffer_result : buffer_in_0;
+        buffer_alpha = (r_dp_req_i_0.multihead_opcode[1] === 1'b1) ? r_dp_req_i_0.axpy_alpha : 32'd1;
+    end
+
+    assign buffer_result = (buffer_alpha * buffer_in_0) + buffer_in_1;
 
     assign buffer_in_shifted = {buffer_in, buffer_in} >> (r_dp_req_i_0.shift * 8);
     assign buffer_in_valid = buffer_in_valid_0 & buffer_in_valid_1;
@@ -651,7 +657,9 @@ module idma_legalizer_r_obi_w_obi #(
         shift:        opt_tf_q.read_shift,
         decouple_aw:  opt_tf_q.decouple_aw,
         is_single:    r_num_bytes <= StrbWidth, 
-        axpy_alpha:   req_i.opt.beo.axpy_alpha
+        axpy_alpha:   req_i.opt.beo.axpy_alpha,
+        sec_src_addr: req_i.opt.beo.sec_src_addr,
+        multihead_opcode: req_i.opt.beo.multihead_opcode
     };
     assign r_req_o_1.r_dp_req = r_req_o.r_dp_req;
 
@@ -888,6 +896,8 @@ module idma_backend_r_obi_w_obi #(
         logic                decouple_aw;
         logic                is_single;
         logic [31:0]         axpy_alpha;
+        logic [31:0]         sec_src_addr;
+        logic [31:0]         multihead_opcode;
     } r_dp_req_t;
 
     /// The datapath read response type provides feedback from the read part of the datapath:
@@ -1002,10 +1012,10 @@ module idma_backend_r_obi_w_obi #(
     w_dp_req_t w_dp_req_out;
 
     // datapah responses
-    r_dp_rsp_t r_dp_rsp;
+    r_dp_rsp_t r_dp_rsp_0, r_dp_rsp_1;
     w_dp_rsp_t w_dp_rsp;
-    logic r_dp_rsp_valid, w_dp_rsp_valid;
-    logic r_dp_rsp_ready, w_dp_rsp_ready;
+    logic r_dp_rsp_valid_0, r_dp_rsp_valid_1, w_dp_rsp_valid;
+    logic r_dp_rsp_ready_0, r_dp_rsp_ready_1, w_dp_rsp_ready;
 
     // Ax handshaking
     logic ar_ready,    ar_ready_dp;
@@ -1132,7 +1142,9 @@ module idma_backend_r_obi_w_obi #(
             shift:       OffsetWidth'(idma_req_i.src_addr[OffsetWidth-1:0]),
             decouple_aw: idma_req_i.opt.beo.decouple_aw,
             is_single:   len == '0,
-            axpy_alpha:  idma_req_i.opt.beo.axpy_alpha
+            axpy_alpha:  idma_req_i.opt.beo.axpy_alpha,
+            sec_src_addr: idma_req_i.opt.beo.sec_src_addr,
+            multihead_opcode: idma_req_i.opt.beo.multihead_opcode
         };
 
         // assemble write datapath request
@@ -1183,7 +1195,7 @@ module idma_backend_r_obi_w_obi #(
         assign legalizer_flush    = 1'b0;
         assign legalizer_kill     = 1'b0;
         assign dp_poison          = 1'b0;
-        assign r_dp_rsp_ready     = rsp_ready;
+        assign r_dp_rsp_ready_0   = rsp_ready;
         assign w_dp_rsp_ready     = rsp_ready;
         assign busy_o.eh_fsm_busy = 1'b0;
         assign busy_o.eh_cnt_busy = 1'b0;
@@ -1345,12 +1357,12 @@ module idma_backend_r_obi_w_obi #(
         .obi_read_rsp_i_1  ( obi_read_rsp_i_1       ),
         .obi_write_req_o ( obi_write_req_o      ),
         .obi_write_rsp_i ( obi_write_rsp_i      ),
-        .r_dp_req_i_0      ( r_dp_req_out         ),
-        .r_dp_valid_i_0    ( r_dp_req_out_valid   ),
-        .r_dp_ready_o_0    ( r_dp_req_out_ready   ),
-        .r_dp_rsp_o_0      ( r_dp_rsp             ),
-        .r_dp_valid_o_0    ( r_dp_rsp_valid       ),
-        .r_dp_ready_i_0    ( r_dp_rsp_ready       ),
+        .r_dp_req_i_0      ( r_dp_req_out_0         ),
+        .r_dp_valid_i_0    ( r_dp_req_out_valid_0   ),
+        .r_dp_ready_o_0    ( r_dp_req_out_ready_0   ),
+        .r_dp_rsp_o_0      ( r_dp_rsp_0             ),
+        .r_dp_valid_o_0    ( r_dp_rsp_valid_0       ),
+        .r_dp_ready_i_0    ( r_dp_rsp_ready_0       ),
         .r_dp_req_i_1      ( r_dp_req_out_1         ),
         .r_dp_valid_i_1    ( r_dp_req_out_valid_1   ),
         .r_dp_ready_o_1    ( r_dp_req_out_ready_1   ),
@@ -1399,7 +1411,7 @@ module idma_backend_r_obi_w_obi #(
             .testmode_i       ( testmode_i                  ),
             .r_rsp_valid_i    ( r_chan_valid                ),
             .r_rsp_ready_i    ( r_chan_ready                ),
-            .r_rsp_first_i    ( r_dp_rsp.first              ),
+            .r_rsp_first_i    ( r_dp_rsp_0.first              ),
             .r_decouple_aw_i  ( r_dp_req_out_0.decouple_aw    ),
             .aw_decouple_aw_i ( w_req.decouple_aw ),
             .aw_req_i         ( w_req.aw_req                ),
@@ -1925,6 +1937,8 @@ package idma_reg32_1d_reg_pkg;
 
   typedef struct packed {
     logic [31:0] axpy_alpha;
+    logic [31:0] sec_src_addr;
+    logic [31:0] opcode;
   } idma_reg32_1d_reg2hw_multihead_reg_t;
   
 
@@ -2165,8 +2179,8 @@ package idma_reg32_1d_reg_pkg;
     4'b 1111, // index[49] IDMA_REG32_1D_DST_ADDR_LOW
     4'b 1111, // index[50] IDMA_REG32_1D_SRC_ADDR_LOW
     4'b 1111, // index[51] IDMA_REG32_1D_LENGTH_LOW
-    4'b 1111  // index[52] IDMA_REG32_1D_AXPY_ALPHA
-    4'b 1111  // index[52] IDMA_REG32_1D_SEC_SRC_ADDR
+    4'b 1111,  // index[52] IDMA_REG32_1D_AXPY_ALPHA
+    4'b 1111,  // index[52] IDMA_REG32_1D_SEC_SRC_ADDR
     4'b 1111  // index[52] IDMA_REG32_1D_MULTIHEAD_OPCODE
   };
 
@@ -2640,7 +2654,7 @@ module idma_reg32_1d_reg_top #(
   logic [31:0] sec_src_addr_wd;
   logic sec_src_addr_we;
   logic [31:0] multihead_opcode_qs;
-  logic [31:0] multihead_opcode_qs;
+  logic [31:0] multihead_opcode_wd;
   logic multihead_opcode_we;
 
   // Register instances
@@ -3778,7 +3792,7 @@ module idma_reg32_1d_reg_top #(
 
     // to internal hardware
     .qe     (),
-    .q      (reg2hw.multihead.axpy_alpha ),
+    .q      (reg2hw.multihead.sec_src_addr ),
 
     // to register interface (read)
     .qs     (sec_src_addr_qs)
@@ -3803,7 +3817,7 @@ module idma_reg32_1d_reg_top #(
 
     // to internal hardware
     .qe     (),
-    .q      (reg2hw.multihead.axpy_alpha ),
+    .q      (reg2hw.multihead.opcode ),
 
     // to register interface (read)
     .qs     (multihead_opcode_qs)
@@ -4514,6 +4528,8 @@ module idma_reg32_1d #(
       arb_dma_req[i].opt.beo.src_reduce_len = dma_reg2hw[i].conf.src_reduce_len.q;
       arb_dma_req[i].opt.beo.dst_reduce_len = dma_reg2hw[i].conf.dst_reduce_len.q;
       arb_dma_req[i].opt.beo.axpy_alpha = dma_reg2hw[i].multihead.axpy_alpha;
+      arb_dma_req[i].opt.beo.sec_src_addr = dma_reg2hw[i].multihead.sec_src_addr;
+      arb_dma_req[i].opt.beo.multihead_opcode = dma_reg2hw[i].multihead.opcode;
 
     end
 
