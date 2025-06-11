@@ -1999,6 +1999,8 @@ package idma_reg32_1d_reg_pkg;
   parameter logic [BlockAw-1:0] IDMA_REG32_1D_SRC_ADDR_LOW_OFFSET = 8'h d8;
   parameter logic [BlockAw-1:0] IDMA_REG32_1D_LENGTH_LOW_OFFSET = 8'h e0;
   parameter logic [BlockAw-1:0] IDMA_REG32_1D_AXPY_ALPHA_OFFSET = 8'h f0;
+  parameter logic [BlockAw-1:0] IDMA_REG32_1D_SEC_SRC_ADDR_OFFSET = 8'h f4;
+  parameter logic [BlockAw-1:0] IDMA_REG32_1D_MULTIHEAD_OPCODE_OFFSET = 8'h f8;
 
   // Reset values for hwext registers and their fields
   parameter logic [9:0] IDMA_REG32_1D_STATUS_0_RESVAL = 10'h 0;
@@ -2104,11 +2106,13 @@ package idma_reg32_1d_reg_pkg;
     IDMA_REG32_1D_DST_ADDR_LOW,
     IDMA_REG32_1D_SRC_ADDR_LOW,
     IDMA_REG32_1D_LENGTH_LOW, 
-    IDMA_REG32_1D_AXPY_ALPHA
+    IDMA_REG32_1D_AXPY_ALPHA,
+    IDMA_REG32_1D_SEC_SRC_ADDR,
+    IDMA_REG32_1D_MULTIHEAD_OPCODE
   } idma_reg32_1d_id_e;
 
   // Register width information to check illegal writes
-  parameter logic [3:0] IDMA_REG32_1D_PERMIT [53] = '{
+  parameter logic [3:0] IDMA_REG32_1D_PERMIT [55] = '{
     4'b 0111, // index[ 0] IDMA_REG32_1D_CONF
     4'b 0011, // index[ 1] IDMA_REG32_1D_STATUS_0
     4'b 0011, // index[ 2] IDMA_REG32_1D_STATUS_1
@@ -2162,6 +2166,8 @@ package idma_reg32_1d_reg_pkg;
     4'b 1111, // index[50] IDMA_REG32_1D_SRC_ADDR_LOW
     4'b 1111, // index[51] IDMA_REG32_1D_LENGTH_LOW
     4'b 1111  // index[52] IDMA_REG32_1D_AXPY_ALPHA
+    4'b 1111  // index[52] IDMA_REG32_1D_SEC_SRC_ADDR
+    4'b 1111  // index[52] IDMA_REG32_1D_MULTIHEAD_OPCODE
   };
 
 endpackage
@@ -2630,6 +2636,12 @@ module idma_reg32_1d_reg_top #(
   logic [31:0] axpy_alpha_qs;
   logic [31:0] axpy_alpha_wd;
   logic axpy_alpha_we;
+  logic [31:0] sec_src_addr_qs;
+  logic [31:0] sec_src_addr_wd;
+  logic sec_src_addr_we;
+  logic [31:0] multihead_opcode_qs;
+  logic [31:0] multihead_opcode_qs;
+  logic multihead_opcode_we;
 
   // Register instances
   // R[conf]: V(False)
@@ -3747,9 +3759,59 @@ module idma_reg32_1d_reg_top #(
     .qs     (axpy_alpha_qs)
   );
 
+  // Second Source Address
+  prim_subreg #(
+    .DW      (32),
+    .SWACCESS("RW"),
+    .RESVAL  (32'h0)
+  ) u_sec_src_addr (
+    .clk_i   (clk_i    ),
+    .rst_ni  (rst_ni  ),
+
+    // from register interface
+    .we     (sec_src_addr_we),
+    .wd     (sec_src_addr_wd),
+
+    // from internal hardware
+    .de     (1'b0),
+    .d      ('0  ),
+
+    // to internal hardware
+    .qe     (),
+    .q      (reg2hw.multihead.axpy_alpha ),
+
+    // to register interface (read)
+    .qs     (sec_src_addr_qs)
+  );
+
+  // Multi-Head Operation Code
+  prim_subreg #(
+    .DW      (32),
+    .SWACCESS("RW"),
+    .RESVAL  (32'h0)
+  ) u_multihead_opcode (
+    .clk_i   (clk_i    ),
+    .rst_ni  (rst_ni  ),
+
+    // from register interface
+    .we     (multihead_opcode_we),
+    .wd     (multihead_opcode_wd),
+
+    // from internal hardware
+    .de     (1'b0),
+    .d      ('0  ),
+
+    // to internal hardware
+    .qe     (),
+    .q      (reg2hw.multihead.axpy_alpha ),
+
+    // to register interface (read)
+    .qs     (multihead_opcode_qs)
+  );
 
 
-  logic [52:0] addr_hit;
+
+  logic [54:0] addr_hit;
   always_comb begin
     addr_hit = '0;
     addr_hit[ 0] = (reg_addr == IDMA_REG32_1D_CONF_OFFSET);
@@ -3805,6 +3867,8 @@ module idma_reg32_1d_reg_top #(
     addr_hit[50] = (reg_addr == IDMA_REG32_1D_SRC_ADDR_LOW_OFFSET);
     addr_hit[51] = (reg_addr == IDMA_REG32_1D_LENGTH_LOW_OFFSET);
     addr_hit[52] = (reg_addr == IDMA_REG32_1D_AXPY_ALPHA_OFFSET);
+    addr_hit[53] = (reg_addr == IDMA_REG32_1D_SEC_SRC_ADDR_OFFSET);
+    addr_hit[54] = (reg_addr == IDMA_REG32_1D_MULTIHEAD_OPCODE_OFFSET);
   end
 
   assign addrmiss = (reg_re || reg_we) ? ~|addr_hit : 1'b0 ;
@@ -3864,7 +3928,9 @@ module idma_reg32_1d_reg_top #(
                (addr_hit[49] & (|(IDMA_REG32_1D_PERMIT[49] & ~reg_be))) |
                (addr_hit[50] & (|(IDMA_REG32_1D_PERMIT[50] & ~reg_be))) |
                (addr_hit[51] & (|(IDMA_REG32_1D_PERMIT[51] & ~reg_be))) |
-               (addr_hit[52] & (|(IDMA_REG32_1D_PERMIT[52] & ~reg_be)))));
+               (addr_hit[52] & (|(IDMA_REG32_1D_PERMIT[52] & ~reg_be))) |
+               (addr_hit[53] & (|(IDMA_REG32_1D_PERMIT[53] & ~reg_be))) |
+               (addr_hit[54] & (|(IDMA_REG32_1D_PERMIT[54] & ~reg_be)))));
   end
 
   assign conf_decouple_aw_we = addr_hit[0] & reg_we & !reg_error;
@@ -4001,6 +4067,12 @@ module idma_reg32_1d_reg_top #(
 
   assign axpy_alpha_we = addr_hit[52] & reg_we & !reg_error;
   assign axpy_alpha_wd = reg_wdata[31:0];
+
+  assign sec_src_addr_we = addr_hit[53] & reg_we & !reg_error;
+  assign sec_src_addr_wd = reg_wdata[31:0];
+
+  assign multihead_opcode_we = addr_hit[54] & reg_we & !reg_error;
+  assign multihead_opcode_wd = reg_wdata[31:0];
 
   // Read data return
   always_comb begin
@@ -4224,6 +4296,14 @@ module idma_reg32_1d_reg_top #(
 
       addr_hit[52]: begin
         reg_rdata_next[31:0] = axpy_alpha_qs;
+      end
+
+      addr_hit[53]: begin
+        reg_rdata_next[31:0] = sec_src_addr_qs;
+      end
+
+      addr_hit[54]: begin
+        reg_rdata_next[31:0] = multihead_opcode_qs;
       end
 
       default: begin
