@@ -234,15 +234,20 @@ module idma_transport_layer_r_obi_w_obi #(
     //--------------------------------------
     // Read Barrel shifter
     //--------------------------------------
-    logic [31:0] buffer_alpha;
     logic [31:0] buffer_result;
 
     always_comb begin
         buffer_in = (r_dp_req_i_0.multihead_opcode[0] === 1'b1) ? buffer_result : buffer_in_0;
-        buffer_alpha = (r_dp_req_i_0.multihead_opcode[1] === 1'b1) ? r_dp_req_i_0.axpy_alpha : 32'd1;
-    end
 
-    assign buffer_result = (buffer_alpha * buffer_in_0) + buffer_in_1;
+        // Default to buffer_add for any unknown or 00 case
+        casez (r_dp_req_i_0.multihead_opcode[2:1])
+            2'b00: buffer_result = buffer_in_0 + buffer_in_1;
+            2'b01: buffer_result = buffer_in_0 - buffer_in_1;
+            2'b10: buffer_result = buffer_in_0 * buffer_in_1;
+            2'b11: buffer_result = (r_dp_req_i_0.axpy_alpha * buffer_in_0) + buffer_in_1;
+            default: buffer_result = buffer_in_0 + buffer_in_1; // covers x or z
+        endcase
+    end
 
     assign buffer_in_shifted = {buffer_in, buffer_in} >> (r_dp_req_i_0.shift * 8);
     assign buffer_in_valid = buffer_in_valid_0 & buffer_in_valid_1;
@@ -639,7 +644,7 @@ module idma_legalizer_r_obi_w_obi #(
             a_optional: '0
         };
         r_req_o_1.ar_req.obi.a_chan = '{
-            addr: { r_tf_q.addr[AddrWidth-1:OffsetWidth]+'h200, {{OffsetWidth}{1'b0}} },
+            addr: { r_tf_q.addr[AddrWidth-1:OffsetWidth] + req_i.opt.beo.sec_src_addr, {{OffsetWidth}{1'b0}} },
             be: '1,
             we: 1'b0,
             wdata: '0,
