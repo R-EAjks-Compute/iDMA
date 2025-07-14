@@ -168,6 +168,20 @@ module idma_transport_layer_r_obi_w_obi #(
     logic r_chan_ready_0, r_chan_ready_1;
     logic r_chan_valid_0, r_chan_valid_1;
 
+    // Buffer OBI write request
+    obi_req_t obi_write_req_d;
+    logic aw_ready_o_d;
+    always_ff @(posedge clk_i) begin : blockName
+        if (!rst_ni) begin
+            obi_write_req_o = '0;
+            aw_ready_o = 1'b0;
+        end else begin
+            obi_write_req_o = obi_write_req_d;
+            aw_ready_o = aw_ready_o_d;
+        end
+    end
+
+
     //--------------------------------------
     // Read Ports
     //--------------------------------------
@@ -309,8 +323,8 @@ module idma_transport_layer_r_obi_w_obi #(
         .w_dp_ready_i       ( w_dp_ready_i ),
         .aw_req_i           ( aw_req_i ),
         .aw_valid_i         ( aw_valid_i ),
-        .aw_ready_o         ( aw_ready_o  ),
-        .write_req_o        ( obi_write_req_o ),
+        .aw_ready_o         ( aw_ready_o_d  ),
+        .write_req_o        ( obi_write_req_o_d ),
         .write_rsp_i        ( obi_write_rsp_i ),
         .buffer_out_i       ( buffer_out_shifted ),
         .buffer_out_valid_i ( buffer_out_valid_shifted ),
@@ -1024,8 +1038,16 @@ module idma_backend_r_obi_w_obi #(
 
     // Ax handshaking
     logic ar_ready,    ar_ready_dp;
-    logic aw_ready,    aw_ready_dp;
+    logic aw_ready,    aw_ready_dp, aw_ready_dp_q;
     logic aw_valid_dp, ar_valid_dp;
+
+    always_ff @(posedge clk_i) begin
+        if (!rst_ni) begin
+            aw_ready_dp_q = '0;
+        end else begin
+            aw_ready_dp_q = aw_ready_dp;
+        end
+    end
 
     // Ax request from R-AW coupler to datapath
     write_meta_channel_t aw_req_dp;
@@ -1424,7 +1446,7 @@ module idma_backend_r_obi_w_obi #(
             .aw_ready_o       ( aw_ready                    ),
             .aw_req_o         ( aw_req_dp                   ),
             .aw_valid_o       ( aw_valid_dp                 ),
-            .aw_ready_i       ( aw_ready_dp                 ),
+            .aw_ready_i       ( aw_ready_dp_q                 ),
             .busy_o           ( busy_o.raw_coupler_busy     )
         );
     end else begin : gen_r_aw_bypass
