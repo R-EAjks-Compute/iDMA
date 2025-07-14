@@ -324,7 +324,7 @@ module idma_transport_layer_r_obi_w_obi #(
         .aw_req_i           ( aw_req_i ),
         .aw_valid_i         ( aw_valid_i ),
         .aw_ready_o         ( aw_ready_o_d  ),
-        .write_req_o        ( obi_write_req_o_d ),
+        .write_req_o        ( obi_write_req_d ),
         .write_rsp_i        ( obi_write_rsp_i ),
         .buffer_out_i       ( buffer_out_shifted ),
         .buffer_out_valid_i ( buffer_out_valid_shifted ),
