@@ -173,11 +173,11 @@ module idma_transport_layer_r_obi_w_obi #(
     logic aw_ready_o_d;
     always_ff @(posedge clk_i) begin : blockName
         if (!rst_ni) begin
-            obi_write_req_o = '0;
-            aw_ready_o = 1'b0;
+            obi_write_req_o <= '0;
+            aw_ready_o <= 1'b0;
         end else begin
-            obi_write_req_o = obi_write_req_d;
-            aw_ready_o = aw_ready_o_d;
+            obi_write_req_o <= obi_write_req_d;
+            aw_ready_o <= aw_ready_o_d;
         end
     end
 
@@ -1043,9 +1043,9 @@ module idma_backend_r_obi_w_obi #(
 
     always_ff @(posedge clk_i) begin
         if (!rst_ni) begin
-            aw_ready_dp_q = '0;
+            aw_ready_dp_q <= '0;
         end else begin
-            aw_ready_dp_q = aw_ready_dp;
+            aw_ready_dp_q <= aw_ready_dp;
         end
     end
 
