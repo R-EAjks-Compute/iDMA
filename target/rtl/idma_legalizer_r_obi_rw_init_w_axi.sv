@@ -474,7 +474,7 @@ module idma_legalizer_r_obi_rw_init_w_axi #(
     //--------------------------------------
     // Assertions
     //--------------------------------------
-    // only support the decomposition of incremental bursts
+    // only support the decomposition of incremental bursts (AXI only)
     `ASSERT_NEVER(OnlyIncrementalBurstsSRC, (ready_o & valid_i &
                   req_i.opt.src.burst != axi_pkg::BURST_INCR), clk_i, !rst_ni)
     `ASSERT_NEVER(OnlyIncrementalBurstsDST, (ready_o & valid_i &

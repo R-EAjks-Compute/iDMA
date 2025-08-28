@@ -7,10 +7,8 @@
 // - Tobias Senti <tsenti@ethz.ch>
 
 `include "axi/typedef.svh"
-`include "axi_stream/typedef.svh"
-`include "idma/typedef.svh"
 `include "obi/typedef.svh"
-`include "tilelink/typedef.svh"
+`include "idma/typedef.svh"
 
 /// Synthesis wrapper for the iDMA backend. Unpacks all the interfaces to simple logic vectors
 module idma_backend_synth_r_axi_rw_init_rw_obi #(
@@ -18,9 +16,9 @@ module idma_backend_synth_r_axi_rw_init_rw_obi #(
     parameter int unsigned DataWidth           = 32'd32,
     /// Address width
     parameter int unsigned AddrWidth           = 32'd32,
-    /// AXI user width
+    /// User width
     parameter int unsigned UserWidth           = 32'd1,
-    /// AXI ID width
+    /// Transaction ID width
     parameter int unsigned AxiIdWidth          = 32'd1,
     /// Number of transaction that can be in-flight concurrently
     parameter int unsigned NumAxInFlight       = 32'd3,
@@ -42,7 +40,7 @@ module idma_backend_synth_r_axi_rw_init_rw_obi #(
     parameter bit          RAWCouplingAvail    = 0,
     /// Should hardware legalization be present? (recommended)
     /// If not, software legalization is required to ensure the transfers are
-    /// AXI4-conformal
+    /// bus-spec conformal
     parameter bit          HardwareLegalizer   = 1'b1,
     /// Reject zero-length transfers
     parameter bit          RejectZeroTransfers = 1'b1,
@@ -244,7 +242,7 @@ typedef struct packed {
     localparam int unsigned init_req_chan_width = $bits(init_req_chan_t);
     localparam int unsigned obi_a_chan_width = $bits(obi_a_chan_t);
 
-    /// Option struct: AXI4 id as well as AXI and backend options
+    /// Option struct: transaction id and protocol/backend options
     /// - `last`: a flag can be set if this transfer is the last of a set of transfers
     `IDMA_TYPEDEF_OPTIONS_T(options_t, id_t)
 
@@ -255,7 +253,7 @@ typedef struct packed {
     `IDMA_TYPEDEF_REQ_T(idma_req_t, tf_len_t, addr_t, options_t)
 
     /// 1D iDMA response payload:
-    /// - `cause`: the AXI response
+    /// - `cause`: protocol response code
     /// - `err_type`: type of the error: read, write, internal, ...
     /// - `burst_addr`: the burst address where the issue error occurred
     `IDMA_TYPEDEF_ERR_PAYLOAD_T(err_payload_t, addr_t)

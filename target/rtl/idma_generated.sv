@@ -2870,7 +2870,7 @@ module idma_legalizer_rw_axi #(
     //--------------------------------------
     // Assertions
     //--------------------------------------
-    // only support the decomposition of incremental bursts
+    // only support the decomposition of incremental bursts (AXI only)
     `ASSERT_NEVER(OnlyIncrementalBurstsSRC, (ready_o & valid_i &
                   req_i.opt.src.burst != axi_pkg::BURST_INCR), clk_i, !rst_ni)
     `ASSERT_NEVER(OnlyIncrementalBurstsDST, (ready_o & valid_i &
@@ -3293,7 +3293,7 @@ module idma_legalizer_r_obi_w_axi #(
     //--------------------------------------
     // Assertions
     //--------------------------------------
-    // only support the decomposition of incremental bursts
+    // only support the decomposition of incremental bursts (AXI only)
     `ASSERT_NEVER(OnlyIncrementalBurstsSRC, (ready_o & valid_i &
                   req_i.opt.src.burst != axi_pkg::BURST_INCR), clk_i, !rst_ni)
     `ASSERT_NEVER(OnlyIncrementalBurstsDST, (ready_o & valid_i &
@@ -3714,7 +3714,7 @@ module idma_legalizer_r_axi_w_obi #(
     //--------------------------------------
     // Assertions
     //--------------------------------------
-    // only support the decomposition of incremental bursts
+    // only support the decomposition of incremental bursts (AXI only)
     `ASSERT_NEVER(OnlyIncrementalBurstsSRC, (ready_o & valid_i &
                   req_i.opt.src.burst != axi_pkg::BURST_INCR), clk_i, !rst_ni)
     `ASSERT_NEVER(OnlyIncrementalBurstsDST, (ready_o & valid_i &
@@ -4201,7 +4201,7 @@ module idma_legalizer_rw_axi_rw_axis #(
     //--------------------------------------
     // Assertions
     //--------------------------------------
-    // only support the decomposition of incremental bursts
+    // only support the decomposition of incremental bursts (AXI only)
     `ASSERT_NEVER(OnlyIncrementalBurstsSRC, (ready_o & valid_i &
                   req_i.opt.src.burst != axi_pkg::BURST_INCR), clk_i, !rst_ni)
     `ASSERT_NEVER(OnlyIncrementalBurstsDST, (ready_o & valid_i &
@@ -4685,7 +4685,7 @@ module idma_legalizer_r_obi_rw_init_w_axi #(
     //--------------------------------------
     // Assertions
     //--------------------------------------
-    // only support the decomposition of incremental bursts
+    // only support the decomposition of incremental bursts (AXI only)
     `ASSERT_NEVER(OnlyIncrementalBurstsSRC, (ready_o & valid_i &
                   req_i.opt.src.burst != axi_pkg::BURST_INCR), clk_i, !rst_ni)
     `ASSERT_NEVER(OnlyIncrementalBurstsDST, (ready_o & valid_i &
@@ -5169,7 +5169,7 @@ module idma_legalizer_r_axi_rw_init_rw_obi #(
     //--------------------------------------
     // Assertions
     //--------------------------------------
-    // only support the decomposition of incremental bursts
+    // only support the decomposition of incremental bursts (AXI only)
     `ASSERT_NEVER(OnlyIncrementalBurstsSRC, (ready_o & valid_i &
                   req_i.opt.src.burst != axi_pkg::BURST_INCR), clk_i, !rst_ni)
     `ASSERT_NEVER(OnlyIncrementalBurstsDST, (ready_o & valid_i &
@@ -5194,9 +5194,9 @@ module idma_backend_rw_axi #(
     parameter int unsigned DataWidth        = 32'd16,
     /// Address width
     parameter int unsigned AddrWidth        = 32'd24,
-    /// AXI user width
+    /// User width
     parameter int unsigned UserWidth        = 32'd1,
-    /// AXI ID width
+    /// Transaction ID width
     parameter int unsigned AxiIdWidth       = 32'd1,
     /// Number of transaction that can be in-flight concurrently
     parameter int unsigned NumAxInFlight    = 32'd2,
@@ -5218,7 +5218,7 @@ module idma_backend_rw_axi #(
     parameter bit MaskInvalidData            = 1'b1,
     /// Should hardware legalization be present? (recommended)
     /// If not, software legalization is required to ensure the transfers are
-    /// AXI4-conformal
+    /// Bus-spec conformal
     parameter bit HardwareLegalizer          = 1'b1,
     /// Reject zero-length transfers
     parameter bit RejectZeroTransfers        = 1'b1,
@@ -5325,11 +5325,11 @@ module idma_backend_rw_axi #(
     } r_dp_req_t;
 
     /// The datapath read response type provides feedback from the read part of the datapath:
-    /// - `resp`: The response from the R channel of the AXI4 manager interface
-    /// - `last`: The last flag from the R channel of the AXI4 manager interface
+    /// - `resp`: Protocol-agnostic response code (matches AXI encoding width when AXI is used)
+    /// - `last`: The last flag of the read response channel
     /// - `first`: Is the current item first beat in the burst
     typedef struct packed {
-        axi_pkg::resp_t resp;
+        logic [1:0]     resp;
         logic           last;
         logic           first;
     } r_dp_rsp_t;
@@ -5347,15 +5347,15 @@ module idma_backend_rw_axi #(
         offset_t             offset;
         offset_t             tailer;
         offset_t             shift;
-        axi_pkg::len_t       num_beats;
+        tf_len_t             num_beats;
         logic                is_single;
     } w_dp_req_t;
 
     /// The datapath write response type provides feedback from the write part of the datapath:
-    /// - `resp`: The response from the B channel of the AXI4 manager interface
-    /// - `user`: The user field from the B channel of the AXI4 manager interface
+    /// - `resp`: Protocol-agnostic response code
+    /// - `user`: User field propagated to the write response (when supported)
     typedef struct packed {
-        axi_pkg::resp_t resp;
+        logic [1:0]   resp;
         user_t          user;
     } w_dp_rsp_t;
 
@@ -5554,7 +5554,7 @@ module idma_backend_rw_axi #(
         );
 
         // local signal holding the length -> explicitly only doing the computation once
-        axi_pkg::len_t len;
+        tf_len_t len;
         assign len = ((idma_req_i.length + idma_req_i.src_addr[OffsetWidth-1:0] -
                      'd1) >> OffsetWidth);
 
@@ -5866,7 +5866,7 @@ module idma_backend_rw_axi #(
             $fatal(1, "Parameter AxiIdWidth has to be > 0!");
         axi_data_width : assert(DataWidth inside {32'd16, 32'd32, 32'd64, 32'd128, 32'd256,
                                                   32'd512, 32'd1024}) else
-            $fatal(1, "Parameter DataWidth has to be at least 16 and inside the AXI4 spec!");
+            $fatal(1, "Parameter DataWidth has to be at least 16 and a supported bus width!");
         axi_user_width : assert(UserWidth > 32'd0) else
             $fatal(1, "Parameter UserWidth has to be > 0!");
         num_ax_in_flight : assert(NumAxInFlight > 32'd1) else
@@ -5899,9 +5899,9 @@ module idma_backend_r_obi_w_axi #(
     parameter int unsigned DataWidth        = 32'd16,
     /// Address width
     parameter int unsigned AddrWidth        = 32'd24,
-    /// AXI user width
+    /// User width
     parameter int unsigned UserWidth        = 32'd1,
-    /// AXI ID width
+    /// Transaction ID width
     parameter int unsigned AxiIdWidth       = 32'd1,
     /// Number of transaction that can be in-flight concurrently
     parameter int unsigned NumAxInFlight    = 32'd2,
@@ -5923,7 +5923,7 @@ module idma_backend_r_obi_w_axi #(
     parameter bit MaskInvalidData            = 1'b1,
     /// Should hardware legalization be present? (recommended)
     /// If not, software legalization is required to ensure the transfers are
-    /// AXI4-conformal
+    /// Bus-spec conformal
     parameter bit HardwareLegalizer          = 1'b1,
     /// Reject zero-length transfers
     parameter bit RejectZeroTransfers        = 1'b1,
@@ -6033,11 +6033,11 @@ module idma_backend_r_obi_w_axi #(
     } r_dp_req_t;
 
     /// The datapath read response type provides feedback from the read part of the datapath:
-    /// - `resp`: The response from the R channel of the AXI4 manager interface
-    /// - `last`: The last flag from the R channel of the AXI4 manager interface
+    /// - `resp`: Protocol-agnostic response code (matches AXI encoding width when AXI is used)
+    /// - `last`: The last flag of the read response channel
     /// - `first`: Is the current item first beat in the burst
     typedef struct packed {
-        axi_pkg::resp_t resp;
+        logic [1:0]     resp;
         logic           last;
         logic           first;
     } r_dp_rsp_t;
@@ -6055,15 +6055,15 @@ module idma_backend_r_obi_w_axi #(
         offset_t             offset;
         offset_t             tailer;
         offset_t             shift;
-        axi_pkg::len_t       num_beats;
+        tf_len_t             num_beats;
         logic                is_single;
     } w_dp_req_t;
 
     /// The datapath write response type provides feedback from the write part of the datapath:
-    /// - `resp`: The response from the B channel of the AXI4 manager interface
-    /// - `user`: The user field from the B channel of the AXI4 manager interface
+    /// - `resp`: Protocol-agnostic response code
+    /// - `user`: User field propagated to the write response (when supported)
     typedef struct packed {
-        axi_pkg::resp_t resp;
+        logic [1:0]   resp;
         user_t          user;
     } w_dp_rsp_t;
 
@@ -6262,7 +6262,7 @@ module idma_backend_r_obi_w_axi #(
         );
 
         // local signal holding the length -> explicitly only doing the computation once
-        axi_pkg::len_t len;
+        tf_len_t len;
         assign len = ((idma_req_i.length + idma_req_i.src_addr[OffsetWidth-1:0] -
                      'd1) >> OffsetWidth);
 
@@ -6522,7 +6522,7 @@ module idma_backend_r_obi_w_axi #(
             $fatal(1, "Parameter AxiIdWidth has to be > 0!");
         axi_data_width : assert(DataWidth inside {32'd16, 32'd32, 32'd64, 32'd128, 32'd256,
                                                   32'd512, 32'd1024}) else
-            $fatal(1, "Parameter DataWidth has to be at least 16 and inside the AXI4 spec!");
+            $fatal(1, "Parameter DataWidth has to be at least 16 and a supported bus width!");
         axi_user_width : assert(UserWidth > 32'd0) else
             $fatal(1, "Parameter UserWidth has to be > 0!");
         num_ax_in_flight : assert(NumAxInFlight > 32'd1) else
@@ -6555,9 +6555,9 @@ module idma_backend_r_axi_w_obi #(
     parameter int unsigned DataWidth        = 32'd16,
     /// Address width
     parameter int unsigned AddrWidth        = 32'd24,
-    /// AXI user width
+    /// User width
     parameter int unsigned UserWidth        = 32'd1,
-    /// AXI ID width
+    /// Transaction ID width
     parameter int unsigned AxiIdWidth       = 32'd1,
     /// Number of transaction that can be in-flight concurrently
     parameter int unsigned NumAxInFlight    = 32'd2,
@@ -6579,7 +6579,7 @@ module idma_backend_r_axi_w_obi #(
     parameter bit MaskInvalidData            = 1'b1,
     /// Should hardware legalization be present? (recommended)
     /// If not, software legalization is required to ensure the transfers are
-    /// AXI4-conformal
+    /// Bus-spec conformal
     parameter bit HardwareLegalizer          = 1'b1,
     /// Reject zero-length transfers
     parameter bit RejectZeroTransfers        = 1'b1,
@@ -6689,11 +6689,11 @@ module idma_backend_r_axi_w_obi #(
     } r_dp_req_t;
 
     /// The datapath read response type provides feedback from the read part of the datapath:
-    /// - `resp`: The response from the R channel of the AXI4 manager interface
-    /// - `last`: The last flag from the R channel of the AXI4 manager interface
+    /// - `resp`: Protocol-agnostic response code (matches AXI encoding width when AXI is used)
+    /// - `last`: The last flag of the read response channel
     /// - `first`: Is the current item first beat in the burst
     typedef struct packed {
-        axi_pkg::resp_t resp;
+        logic [1:0]     resp;
         logic           last;
         logic           first;
     } r_dp_rsp_t;
@@ -6711,15 +6711,15 @@ module idma_backend_r_axi_w_obi #(
         offset_t             offset;
         offset_t             tailer;
         offset_t             shift;
-        axi_pkg::len_t       num_beats;
+        tf_len_t             num_beats;
         logic                is_single;
     } w_dp_req_t;
 
     /// The datapath write response type provides feedback from the write part of the datapath:
-    /// - `resp`: The response from the B channel of the AXI4 manager interface
-    /// - `user`: The user field from the B channel of the AXI4 manager interface
+    /// - `resp`: Protocol-agnostic response code
+    /// - `user`: User field propagated to the write response (when supported)
     typedef struct packed {
-        axi_pkg::resp_t resp;
+        logic [1:0]   resp;
         user_t          user;
     } w_dp_rsp_t;
 
@@ -6918,7 +6918,7 @@ module idma_backend_r_axi_w_obi #(
         );
 
         // local signal holding the length -> explicitly only doing the computation once
-        axi_pkg::len_t len;
+        tf_len_t len;
         assign len = ((idma_req_i.length + idma_req_i.src_addr[OffsetWidth-1:0] -
                      'd1) >> OffsetWidth);
 
@@ -7181,7 +7181,7 @@ module idma_backend_r_axi_w_obi #(
             $fatal(1, "Parameter AxiIdWidth has to be > 0!");
         axi_data_width : assert(DataWidth inside {32'd16, 32'd32, 32'd64, 32'd128, 32'd256,
                                                   32'd512, 32'd1024}) else
-            $fatal(1, "Parameter DataWidth has to be at least 16 and inside the AXI4 spec!");
+            $fatal(1, "Parameter DataWidth has to be at least 16 and a supported bus width!");
         axi_user_width : assert(UserWidth > 32'd0) else
             $fatal(1, "Parameter UserWidth has to be > 0!");
         num_ax_in_flight : assert(NumAxInFlight > 32'd1) else
@@ -7214,9 +7214,9 @@ module idma_backend_rw_axi_rw_axis #(
     parameter int unsigned DataWidth        = 32'd16,
     /// Address width
     parameter int unsigned AddrWidth        = 32'd24,
-    /// AXI user width
+    /// User width
     parameter int unsigned UserWidth        = 32'd1,
-    /// AXI ID width
+    /// Transaction ID width
     parameter int unsigned AxiIdWidth       = 32'd1,
     /// Number of transaction that can be in-flight concurrently
     parameter int unsigned NumAxInFlight    = 32'd2,
@@ -7238,7 +7238,7 @@ module idma_backend_rw_axi_rw_axis #(
     parameter bit MaskInvalidData            = 1'b1,
     /// Should hardware legalization be present? (recommended)
     /// If not, software legalization is required to ensure the transfers are
-    /// AXI4-conformal
+    /// Bus-spec conformal
     parameter bit HardwareLegalizer          = 1'b1,
     /// Reject zero-length transfers
     parameter bit RejectZeroTransfers        = 1'b1,
@@ -7358,11 +7358,11 @@ module idma_backend_rw_axi_rw_axis #(
     } r_dp_req_t;
 
     /// The datapath read response type provides feedback from the read part of the datapath:
-    /// - `resp`: The response from the R channel of the AXI4 manager interface
-    /// - `last`: The last flag from the R channel of the AXI4 manager interface
+    /// - `resp`: Protocol-agnostic response code (matches AXI encoding width when AXI is used)
+    /// - `last`: The last flag of the read response channel
     /// - `first`: Is the current item first beat in the burst
     typedef struct packed {
-        axi_pkg::resp_t resp;
+        logic [1:0]     resp;
         logic           last;
         logic           first;
     } r_dp_rsp_t;
@@ -7380,15 +7380,15 @@ module idma_backend_rw_axi_rw_axis #(
         offset_t             offset;
         offset_t             tailer;
         offset_t             shift;
-        axi_pkg::len_t       num_beats;
+        tf_len_t             num_beats;
         logic                is_single;
     } w_dp_req_t;
 
     /// The datapath write response type provides feedback from the write part of the datapath:
-    /// - `resp`: The response from the B channel of the AXI4 manager interface
-    /// - `user`: The user field from the B channel of the AXI4 manager interface
+    /// - `resp`: Protocol-agnostic response code
+    /// - `user`: User field propagated to the write response (when supported)
     typedef struct packed {
-        axi_pkg::resp_t resp;
+        logic [1:0]   resp;
         user_t          user;
     } w_dp_rsp_t;
 
@@ -7597,7 +7597,7 @@ module idma_backend_rw_axi_rw_axis #(
         );
 
         // local signal holding the length -> explicitly only doing the computation once
-        axi_pkg::len_t len;
+        tf_len_t len;
         assign len = ((idma_req_i.length + idma_req_i.src_addr[OffsetWidth-1:0] -
                      'd1) >> OffsetWidth);
 
@@ -7874,7 +7874,7 @@ module idma_backend_rw_axi_rw_axis #(
             $fatal(1, "Parameter AxiIdWidth has to be > 0!");
         axi_data_width : assert(DataWidth inside {32'd16, 32'd32, 32'd64, 32'd128, 32'd256,
                                                   32'd512, 32'd1024}) else
-            $fatal(1, "Parameter DataWidth has to be at least 16 and inside the AXI4 spec!");
+            $fatal(1, "Parameter DataWidth has to be at least 16 and a supported bus width!");
         axi_user_width : assert(UserWidth > 32'd0) else
             $fatal(1, "Parameter UserWidth has to be > 0!");
         num_ax_in_flight : assert(NumAxInFlight > 32'd1) else
@@ -7907,9 +7907,9 @@ module idma_backend_r_obi_rw_init_w_axi #(
     parameter int unsigned DataWidth        = 32'd16,
     /// Address width
     parameter int unsigned AddrWidth        = 32'd24,
-    /// AXI user width
+    /// User width
     parameter int unsigned UserWidth        = 32'd1,
-    /// AXI ID width
+    /// Transaction ID width
     parameter int unsigned AxiIdWidth       = 32'd1,
     /// Number of transaction that can be in-flight concurrently
     parameter int unsigned NumAxInFlight    = 32'd2,
@@ -7931,7 +7931,7 @@ module idma_backend_r_obi_rw_init_w_axi #(
     parameter bit MaskInvalidData            = 1'b1,
     /// Should hardware legalization be present? (recommended)
     /// If not, software legalization is required to ensure the transfers are
-    /// AXI4-conformal
+    /// Bus-spec conformal
     parameter bit HardwareLegalizer          = 1'b1,
     /// Reject zero-length transfers
     parameter bit RejectZeroTransfers        = 1'b1,
@@ -8054,11 +8054,11 @@ module idma_backend_r_obi_rw_init_w_axi #(
     } r_dp_req_t;
 
     /// The datapath read response type provides feedback from the read part of the datapath:
-    /// - `resp`: The response from the R channel of the AXI4 manager interface
-    /// - `last`: The last flag from the R channel of the AXI4 manager interface
+    /// - `resp`: Protocol-agnostic response code (matches AXI encoding width when AXI is used)
+    /// - `last`: The last flag of the read response channel
     /// - `first`: Is the current item first beat in the burst
     typedef struct packed {
-        axi_pkg::resp_t resp;
+        logic [1:0]     resp;
         logic           last;
         logic           first;
     } r_dp_rsp_t;
@@ -8076,15 +8076,15 @@ module idma_backend_r_obi_rw_init_w_axi #(
         offset_t             offset;
         offset_t             tailer;
         offset_t             shift;
-        axi_pkg::len_t       num_beats;
+        tf_len_t             num_beats;
         logic                is_single;
     } w_dp_req_t;
 
     /// The datapath write response type provides feedback from the write part of the datapath:
-    /// - `resp`: The response from the B channel of the AXI4 manager interface
-    /// - `user`: The user field from the B channel of the AXI4 manager interface
+    /// - `resp`: Protocol-agnostic response code
+    /// - `user`: User field propagated to the write response (when supported)
     typedef struct packed {
-        axi_pkg::resp_t resp;
+        logic [1:0]   resp;
         user_t          user;
     } w_dp_rsp_t;
 
@@ -8293,7 +8293,7 @@ module idma_backend_r_obi_rw_init_w_axi #(
         );
 
         // local signal holding the length -> explicitly only doing the computation once
-        axi_pkg::len_t len;
+        tf_len_t len;
         assign len = ((idma_req_i.length + idma_req_i.src_addr[OffsetWidth-1:0] -
                      'd1) >> OffsetWidth);
 
@@ -8569,7 +8569,7 @@ module idma_backend_r_obi_rw_init_w_axi #(
             $fatal(1, "Parameter AxiIdWidth has to be > 0!");
         axi_data_width : assert(DataWidth inside {32'd16, 32'd32, 32'd64, 32'd128, 32'd256,
                                                   32'd512, 32'd1024}) else
-            $fatal(1, "Parameter DataWidth has to be at least 16 and inside the AXI4 spec!");
+            $fatal(1, "Parameter DataWidth has to be at least 16 and a supported bus width!");
         axi_user_width : assert(UserWidth > 32'd0) else
             $fatal(1, "Parameter UserWidth has to be > 0!");
         num_ax_in_flight : assert(NumAxInFlight > 32'd1) else
@@ -8602,9 +8602,9 @@ module idma_backend_r_axi_rw_init_rw_obi #(
     parameter int unsigned DataWidth        = 32'd16,
     /// Address width
     parameter int unsigned AddrWidth        = 32'd24,
-    /// AXI user width
+    /// User width
     parameter int unsigned UserWidth        = 32'd1,
-    /// AXI ID width
+    /// Transaction ID width
     parameter int unsigned AxiIdWidth       = 32'd1,
     /// Number of transaction that can be in-flight concurrently
     parameter int unsigned NumAxInFlight    = 32'd2,
@@ -8626,7 +8626,7 @@ module idma_backend_r_axi_rw_init_rw_obi #(
     parameter bit MaskInvalidData            = 1'b1,
     /// Should hardware legalization be present? (recommended)
     /// If not, software legalization is required to ensure the transfers are
-    /// AXI4-conformal
+    /// Bus-spec conformal
     parameter bit HardwareLegalizer          = 1'b1,
     /// Reject zero-length transfers
     parameter bit RejectZeroTransfers        = 1'b1,
@@ -8754,11 +8754,11 @@ module idma_backend_r_axi_rw_init_rw_obi #(
     } r_dp_req_t;
 
     /// The datapath read response type provides feedback from the read part of the datapath:
-    /// - `resp`: The response from the R channel of the AXI4 manager interface
-    /// - `last`: The last flag from the R channel of the AXI4 manager interface
+    /// - `resp`: Protocol-agnostic response code (matches AXI encoding width when AXI is used)
+    /// - `last`: The last flag of the read response channel
     /// - `first`: Is the current item first beat in the burst
     typedef struct packed {
-        axi_pkg::resp_t resp;
+        logic [1:0]     resp;
         logic           last;
         logic           first;
     } r_dp_rsp_t;
@@ -8776,15 +8776,15 @@ module idma_backend_r_axi_rw_init_rw_obi #(
         offset_t             offset;
         offset_t             tailer;
         offset_t             shift;
-        axi_pkg::len_t       num_beats;
+        tf_len_t             num_beats;
         logic                is_single;
     } w_dp_req_t;
 
     /// The datapath write response type provides feedback from the write part of the datapath:
-    /// - `resp`: The response from the B channel of the AXI4 manager interface
-    /// - `user`: The user field from the B channel of the AXI4 manager interface
+    /// - `resp`: Protocol-agnostic response code
+    /// - `user`: User field propagated to the write response (when supported)
     typedef struct packed {
-        axi_pkg::resp_t resp;
+        logic [1:0]   resp;
         user_t          user;
     } w_dp_rsp_t;
 
@@ -8993,7 +8993,7 @@ module idma_backend_r_axi_rw_init_rw_obi #(
         );
 
         // local signal holding the length -> explicitly only doing the computation once
-        axi_pkg::len_t len;
+        tf_len_t len;
         assign len = ((idma_req_i.length + idma_req_i.src_addr[OffsetWidth-1:0] -
                      'd1) >> OffsetWidth);
 
@@ -9274,7 +9274,7 @@ module idma_backend_r_axi_rw_init_rw_obi #(
             $fatal(1, "Parameter AxiIdWidth has to be > 0!");
         axi_data_width : assert(DataWidth inside {32'd16, 32'd32, 32'd64, 32'd128, 32'd256,
                                                   32'd512, 32'd1024}) else
-            $fatal(1, "Parameter DataWidth has to be at least 16 and inside the AXI4 spec!");
+            $fatal(1, "Parameter DataWidth has to be at least 16 and a supported bus width!");
         axi_user_width : assert(UserWidth > 32'd0) else
             $fatal(1, "Parameter UserWidth has to be > 0!");
         num_ax_in_flight : assert(NumAxInFlight > 32'd1) else
@@ -9299,10 +9299,7 @@ endmodule
 // - Tobias Senti <tsenti@ethz.ch>
 
 `include "axi/typedef.svh"
-`include "axi_stream/typedef.svh"
 `include "idma/typedef.svh"
-`include "obi/typedef.svh"
-`include "tilelink/typedef.svh"
 
 /// Synthesis wrapper for the iDMA backend. Unpacks all the interfaces to simple logic vectors
 module idma_backend_synth_rw_axi #(
@@ -9310,9 +9307,9 @@ module idma_backend_synth_rw_axi #(
     parameter int unsigned DataWidth           = 32'd32,
     /// Address width
     parameter int unsigned AddrWidth           = 32'd32,
-    /// AXI user width
+    /// User width
     parameter int unsigned UserWidth           = 32'd1,
-    /// AXI ID width
+    /// Transaction ID width
     parameter int unsigned AxiIdWidth          = 32'd1,
     /// Number of transaction that can be in-flight concurrently
     parameter int unsigned NumAxInFlight       = 32'd3,
@@ -9334,7 +9331,7 @@ module idma_backend_synth_rw_axi #(
     parameter bit          RAWCouplingAvail    = 1,
     /// Should hardware legalization be present? (recommended)
     /// If not, software legalization is required to ensure the transfers are
-    /// AXI4-conformal
+    /// bus-spec conformal
     parameter bit          HardwareLegalizer   = 1'b1,
     /// Reject zero-length transfers
     parameter bit          RejectZeroTransfers = 1'b1,
@@ -9478,7 +9475,7 @@ module idma_backend_synth_rw_axi #(
     localparam int unsigned axi_aw_chan_width = axi_pkg::aw_width(AddrWidth, AxiIdWidth, UserWidth);
     localparam int unsigned axi_ar_chan_width = axi_pkg::ar_width(AddrWidth, AxiIdWidth, UserWidth);
 
-    /// Option struct: AXI4 id as well as AXI and backend options
+    /// Option struct: transaction id and protocol/backend options
     /// - `last`: a flag can be set if this transfer is the last of a set of transfers
     `IDMA_TYPEDEF_OPTIONS_T(options_t, id_t)
 
@@ -9489,7 +9486,7 @@ module idma_backend_synth_rw_axi #(
     `IDMA_TYPEDEF_REQ_T(idma_req_t, tf_len_t, addr_t, options_t)
 
     /// 1D iDMA response payload:
-    /// - `cause`: the AXI response
+    /// - `cause`: protocol response code
     /// - `err_type`: type of the error: read, write, internal, ...
     /// - `burst_addr`: the burst address where the issue error occurred
     `IDMA_TYPEDEF_ERR_PAYLOAD_T(err_payload_t, addr_t)
@@ -9671,10 +9668,8 @@ endmodule
 // - Tobias Senti <tsenti@ethz.ch>
 
 `include "axi/typedef.svh"
-`include "axi_stream/typedef.svh"
-`include "idma/typedef.svh"
 `include "obi/typedef.svh"
-`include "tilelink/typedef.svh"
+`include "idma/typedef.svh"
 
 /// Synthesis wrapper for the iDMA backend. Unpacks all the interfaces to simple logic vectors
 module idma_backend_synth_r_obi_w_axi #(
@@ -9682,9 +9677,9 @@ module idma_backend_synth_r_obi_w_axi #(
     parameter int unsigned DataWidth           = 32'd32,
     /// Address width
     parameter int unsigned AddrWidth           = 32'd32,
-    /// AXI user width
+    /// User width
     parameter int unsigned UserWidth           = 32'd1,
-    /// AXI ID width
+    /// Transaction ID width
     parameter int unsigned AxiIdWidth          = 32'd1,
     /// Number of transaction that can be in-flight concurrently
     parameter int unsigned NumAxInFlight       = 32'd3,
@@ -9706,7 +9701,7 @@ module idma_backend_synth_r_obi_w_axi #(
     parameter bit          RAWCouplingAvail    = 0,
     /// Should hardware legalization be present? (recommended)
     /// If not, software legalization is required to ensure the transfers are
-    /// AXI4-conformal
+    /// bus-spec conformal
     parameter bit          HardwareLegalizer   = 1'b1,
     /// Reject zero-length transfers
     parameter bit          RejectZeroTransfers = 1'b1,
@@ -9853,7 +9848,7 @@ module idma_backend_synth_r_obi_w_axi #(
     localparam int unsigned axi_aw_chan_width = axi_pkg::aw_width(AddrWidth, AxiIdWidth, UserWidth);
     localparam int unsigned obi_a_chan_width = $bits(obi_a_chan_t);
 
-    /// Option struct: AXI4 id as well as AXI and backend options
+    /// Option struct: transaction id and protocol/backend options
     /// - `last`: a flag can be set if this transfer is the last of a set of transfers
     `IDMA_TYPEDEF_OPTIONS_T(options_t, id_t)
 
@@ -9864,7 +9859,7 @@ module idma_backend_synth_r_obi_w_axi #(
     `IDMA_TYPEDEF_REQ_T(idma_req_t, tf_len_t, addr_t, options_t)
 
     /// 1D iDMA response payload:
-    /// - `cause`: the AXI response
+    /// - `cause`: protocol response code
     /// - `err_type`: type of the error: read, write, internal, ...
     /// - `burst_addr`: the burst address where the issue error occurred
     `IDMA_TYPEDEF_ERR_PAYLOAD_T(err_payload_t, addr_t)
@@ -10042,10 +10037,8 @@ endmodule
 // - Tobias Senti <tsenti@ethz.ch>
 
 `include "axi/typedef.svh"
-`include "axi_stream/typedef.svh"
-`include "idma/typedef.svh"
 `include "obi/typedef.svh"
-`include "tilelink/typedef.svh"
+`include "idma/typedef.svh"
 
 /// Synthesis wrapper for the iDMA backend. Unpacks all the interfaces to simple logic vectors
 module idma_backend_synth_r_axi_w_obi #(
@@ -10053,9 +10046,9 @@ module idma_backend_synth_r_axi_w_obi #(
     parameter int unsigned DataWidth           = 32'd32,
     /// Address width
     parameter int unsigned AddrWidth           = 32'd32,
-    /// AXI user width
+    /// User width
     parameter int unsigned UserWidth           = 32'd1,
-    /// AXI ID width
+    /// Transaction ID width
     parameter int unsigned AxiIdWidth          = 32'd1,
     /// Number of transaction that can be in-flight concurrently
     parameter int unsigned NumAxInFlight       = 32'd3,
@@ -10077,7 +10070,7 @@ module idma_backend_synth_r_axi_w_obi #(
     parameter bit          RAWCouplingAvail    = 0,
     /// Should hardware legalization be present? (recommended)
     /// If not, software legalization is required to ensure the transfers are
-    /// AXI4-conformal
+    /// bus-spec conformal
     parameter bit          HardwareLegalizer   = 1'b1,
     /// Reject zero-length transfers
     parameter bit          RejectZeroTransfers = 1'b1,
@@ -10218,7 +10211,7 @@ module idma_backend_synth_r_axi_w_obi #(
     localparam int unsigned axi_ar_chan_width = axi_pkg::ar_width(AddrWidth, AxiIdWidth, UserWidth);
     localparam int unsigned obi_a_chan_width = $bits(obi_a_chan_t);
 
-    /// Option struct: AXI4 id as well as AXI and backend options
+    /// Option struct: transaction id and protocol/backend options
     /// - `last`: a flag can be set if this transfer is the last of a set of transfers
     `IDMA_TYPEDEF_OPTIONS_T(options_t, id_t)
 
@@ -10229,7 +10222,7 @@ module idma_backend_synth_r_axi_w_obi #(
     `IDMA_TYPEDEF_REQ_T(idma_req_t, tf_len_t, addr_t, options_t)
 
     /// 1D iDMA response payload:
-    /// - `cause`: the AXI response
+    /// - `cause`: protocol response code
     /// - `err_type`: type of the error: read, write, internal, ...
     /// - `burst_addr`: the burst address where the issue error occurred
     `IDMA_TYPEDEF_ERR_PAYLOAD_T(err_payload_t, addr_t)
@@ -10401,10 +10394,7 @@ endmodule
 // - Tobias Senti <tsenti@ethz.ch>
 
 `include "axi/typedef.svh"
-`include "axi_stream/typedef.svh"
 `include "idma/typedef.svh"
-`include "obi/typedef.svh"
-`include "tilelink/typedef.svh"
 
 /// Synthesis wrapper for the iDMA backend. Unpacks all the interfaces to simple logic vectors
 module idma_backend_synth_rw_axi_rw_axis #(
@@ -10412,9 +10402,9 @@ module idma_backend_synth_rw_axi_rw_axis #(
     parameter int unsigned DataWidth           = 32'd32,
     /// Address width
     parameter int unsigned AddrWidth           = 32'd32,
-    /// AXI user width
+    /// User width
     parameter int unsigned UserWidth           = 32'd1,
-    /// AXI ID width
+    /// Transaction ID width
     parameter int unsigned AxiIdWidth          = 32'd1,
     /// Number of transaction that can be in-flight concurrently
     parameter int unsigned NumAxInFlight       = 32'd3,
@@ -10436,7 +10426,7 @@ module idma_backend_synth_rw_axi_rw_axis #(
     parameter bit          RAWCouplingAvail    = 0,
     /// Should hardware legalization be present? (recommended)
     /// If not, software legalization is required to ensure the transfers are
-    /// AXI4-conformal
+    /// bus-spec conformal
     parameter bit          HardwareLegalizer   = 1'b1,
     /// Reject zero-length transfers
     parameter bit          RejectZeroTransfers = 1'b1,
@@ -10612,7 +10602,7 @@ module idma_backend_synth_rw_axi_rw_axis #(
     localparam int unsigned axi_ar_chan_width = axi_pkg::ar_width(AddrWidth, AxiIdWidth, UserWidth);
     localparam int unsigned axis_t_chan_width = $bits(axis_t_chan_t);
 
-    /// Option struct: AXI4 id as well as AXI and backend options
+    /// Option struct: transaction id and protocol/backend options
     /// - `last`: a flag can be set if this transfer is the last of a set of transfers
     `IDMA_TYPEDEF_OPTIONS_T(options_t, id_t)
 
@@ -10623,7 +10613,7 @@ module idma_backend_synth_rw_axi_rw_axis #(
     `IDMA_TYPEDEF_REQ_T(idma_req_t, tf_len_t, addr_t, options_t)
 
     /// 1D iDMA response payload:
-    /// - `cause`: the AXI response
+    /// - `cause`: protocol response code
     /// - `err_type`: type of the error: read, write, internal, ...
     /// - `burst_addr`: the burst address where the issue error occurred
     `IDMA_TYPEDEF_ERR_PAYLOAD_T(err_payload_t, addr_t)
@@ -10863,10 +10853,8 @@ endmodule
 // - Tobias Senti <tsenti@ethz.ch>
 
 `include "axi/typedef.svh"
-`include "axi_stream/typedef.svh"
-`include "idma/typedef.svh"
 `include "obi/typedef.svh"
-`include "tilelink/typedef.svh"
+`include "idma/typedef.svh"
 
 /// Synthesis wrapper for the iDMA backend. Unpacks all the interfaces to simple logic vectors
 module idma_backend_synth_r_obi_rw_init_w_axi #(
@@ -10874,9 +10862,9 @@ module idma_backend_synth_r_obi_rw_init_w_axi #(
     parameter int unsigned DataWidth           = 32'd32,
     /// Address width
     parameter int unsigned AddrWidth           = 32'd32,
-    /// AXI user width
+    /// User width
     parameter int unsigned UserWidth           = 32'd1,
-    /// AXI ID width
+    /// Transaction ID width
     parameter int unsigned AxiIdWidth          = 32'd1,
     /// Number of transaction that can be in-flight concurrently
     parameter int unsigned NumAxInFlight       = 32'd3,
@@ -10898,7 +10886,7 @@ module idma_backend_synth_r_obi_rw_init_w_axi #(
     parameter bit          RAWCouplingAvail    = 0,
     /// Should hardware legalization be present? (recommended)
     /// If not, software legalization is required to ensure the transfers are
-    /// AXI4-conformal
+    /// bus-spec conformal
     parameter bit          HardwareLegalizer   = 1'b1,
     /// Reject zero-length transfers
     parameter bit          RejectZeroTransfers = 1'b1,
@@ -11092,7 +11080,7 @@ typedef struct packed {
     localparam int unsigned init_req_chan_width = $bits(init_req_chan_t);
     localparam int unsigned obi_a_chan_width = $bits(obi_a_chan_t);
 
-    /// Option struct: AXI4 id as well as AXI and backend options
+    /// Option struct: transaction id and protocol/backend options
     /// - `last`: a flag can be set if this transfer is the last of a set of transfers
     `IDMA_TYPEDEF_OPTIONS_T(options_t, id_t)
 
@@ -11103,7 +11091,7 @@ typedef struct packed {
     `IDMA_TYPEDEF_REQ_T(idma_req_t, tf_len_t, addr_t, options_t)
 
     /// 1D iDMA response payload:
-    /// - `cause`: the AXI response
+    /// - `cause`: protocol response code
     /// - `err_type`: type of the error: read, write, internal, ...
     /// - `burst_addr`: the burst address where the issue error occurred
     `IDMA_TYPEDEF_ERR_PAYLOAD_T(err_payload_t, addr_t)
@@ -11335,10 +11323,8 @@ endmodule
 // - Tobias Senti <tsenti@ethz.ch>
 
 `include "axi/typedef.svh"
-`include "axi_stream/typedef.svh"
-`include "idma/typedef.svh"
 `include "obi/typedef.svh"
-`include "tilelink/typedef.svh"
+`include "idma/typedef.svh"
 
 /// Synthesis wrapper for the iDMA backend. Unpacks all the interfaces to simple logic vectors
 module idma_backend_synth_r_axi_rw_init_rw_obi #(
@@ -11346,9 +11332,9 @@ module idma_backend_synth_r_axi_rw_init_rw_obi #(
     parameter int unsigned DataWidth           = 32'd32,
     /// Address width
     parameter int unsigned AddrWidth           = 32'd32,
-    /// AXI user width
+    /// User width
     parameter int unsigned UserWidth           = 32'd1,
-    /// AXI ID width
+    /// Transaction ID width
     parameter int unsigned AxiIdWidth          = 32'd1,
     /// Number of transaction that can be in-flight concurrently
     parameter int unsigned NumAxInFlight       = 32'd3,
@@ -11370,7 +11356,7 @@ module idma_backend_synth_r_axi_rw_init_rw_obi #(
     parameter bit          RAWCouplingAvail    = 0,
     /// Should hardware legalization be present? (recommended)
     /// If not, software legalization is required to ensure the transfers are
-    /// AXI4-conformal
+    /// bus-spec conformal
     parameter bit          HardwareLegalizer   = 1'b1,
     /// Reject zero-length transfers
     parameter bit          RejectZeroTransfers = 1'b1,
@@ -11572,7 +11558,7 @@ typedef struct packed {
     localparam int unsigned init_req_chan_width = $bits(init_req_chan_t);
     localparam int unsigned obi_a_chan_width = $bits(obi_a_chan_t);
 
-    /// Option struct: AXI4 id as well as AXI and backend options
+    /// Option struct: transaction id and protocol/backend options
     /// - `last`: a flag can be set if this transfer is the last of a set of transfers
     `IDMA_TYPEDEF_OPTIONS_T(options_t, id_t)
 
@@ -11583,7 +11569,7 @@ typedef struct packed {
     `IDMA_TYPEDEF_REQ_T(idma_req_t, tf_len_t, addr_t, options_t)
 
     /// 1D iDMA response payload:
-    /// - `cause`: the AXI response
+    /// - `cause`: protocol response code
     /// - `err_type`: type of the error: read, write, internal, ...
     /// - `burst_addr`: the burst address where the issue error occurred
     `IDMA_TYPEDEF_ERR_PAYLOAD_T(err_payload_t, addr_t)
