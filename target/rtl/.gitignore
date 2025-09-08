@@ -1,5 +1,4 @@
-# Deactivated by deploy.py
-# Bender.yml
-# include
-# *.sv
-# *.hjson
+Bender.yml
+include
+*.sv
+*.hjson

@@ -1,7 +1,0 @@
-# vsim -c -t 1ps -voptargs="+acc" "+job_file=jobs/backend_rw_axi/simple.txt" -logfile rw_axi_simple.log -wlf rw_axi_simple.wlf tb_idma_backend_rw_axi -do "source start.tcl; run -all" 
-# Start time: 15:00:49 on Apr 06,2025
-# ** Error (suppressible): (vsim-19) Failed to access library 'work' at "work".
-# No such file or directory. (errno = ENOENT)
-# Error loading design
-# End time: 15:00:49 on Apr 06,2025, Elapsed time: 0:00:00
-# Errors: 1, Warnings: 0
