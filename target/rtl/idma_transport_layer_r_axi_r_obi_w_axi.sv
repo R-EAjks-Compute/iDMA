@@ -17,7 +17,7 @@
 
 
 /// Implementing the transport layer in the iDMA backend.
-module idma_transport_layer_rw_axi #(
+module idma_transport_layer_r_axi_r_obi_w_axi #(
     /// Number of transaction that can be in-flight concurrently
     parameter int unsigned NumAxInFlight = 32'd2,
     /// Data width
@@ -42,9 +42,13 @@ module idma_transport_layer_rw_axi #(
     parameter type write_meta_channel_t = logic,
     /// Read Meta channel type
     parameter type read_meta_channel_t = logic,
+    parameter type read_meta_channel_tagged_t = logic,
     /// AXI4+ATOP Request and Response channel type
     parameter type axi_req_t = logic,
-    parameter type axi_rsp_t = logic
+    parameter type axi_rsp_t = logic,
+    /// OBI Request and Response channel type
+    parameter type obi_req_t = logic,
+    parameter type obi_rsp_t = logic
 )(
     /// Clock
     input  logic clk_i,
@@ -59,6 +63,11 @@ module idma_transport_layer_rw_axi #(
     /// AXI4+ATOP read responses
     input axi_rsp_t axi_read_rsp_i_0,
     input axi_rsp_t axi_read_rsp_i_1,
+
+    /// OBI read request
+    output obi_req_t obi_read_req_o,
+    /// OBI read response
+    input obi_rsp_t obi_read_rsp_i,
 
     /// AXI4+ATOP write request
     output axi_req_t axi_write_req_o,
@@ -95,7 +104,7 @@ module idma_transport_layer_rw_axi #(
     input  logic w_dp_ready_i,
 
     /// Read meta request
-    input  read_meta_channel_t ar_req_i,
+    input  read_meta_channel_tagged_t ar_req_i,
     /// Read meta request valid
     input  logic ar_valid_i,
     /// Read meta request ready
@@ -134,6 +143,7 @@ module idma_transport_layer_rw_axi #(
     typedef logic [7:0] byte_t;
 
     // inbound control signals to the read buffer: controlled by the read process
+    strb_t axi_buffer_in_valid_0, axi_buffer_in_valid_1, obi_buffer_in_valid, buffer_in_valid;
 
     strb_t buffer_in_ready;
     // outbound control signals of the buffer: controlled by the write process
@@ -146,6 +156,16 @@ module idma_transport_layer_rw_axi #(
 
     // aligned and coalesced data leaving the buffer
     byte_t [StrbWidth-1:0] buffer_out, buffer_out_shifted;
+
+    // Read multiplexed signals
+    logic axi_r_chan_valid_0, axi_r_chan_valid_1, obi_r_chan_valid;
+    logic axi_r_chan_ready_0, axi_r_chan_ready_1, obi_r_chan_ready;
+    logic axi_r_dp_valid_0, axi_r_dp_valid_1, obi_r_dp_valid;
+    logic axi_r_dp_ready_0, axi_r_dp_ready_1, obi_r_dp_ready;
+    r_dp_rsp_t axi_r_dp_rsp_0, axi_r_dp_rsp_1, obi_r_dp_rsp;
+
+    logic axi_ar_ready_0, axi_ar_ready_1, obi_ar_ready;
+
 
     //--------------------------------------
     // Read Ports
@@ -164,20 +184,20 @@ module idma_transport_layer_rw_axi #(
         .clk_i             ( clk_i      ),
         .rst_ni            ( rst_ni     ),
         .r_dp_req_i        ( r_dp_req_i ),
-        .r_dp_valid_i      ( r_dp_valid_i ),
-        .r_dp_ready_o      ( r_dp_ready_o_0 ),
-        .r_dp_rsp_o        ( r_dp_rsp_o_0 ),
-        .r_dp_valid_o      ( r_dp_valid_o_0 ),
-        .r_dp_ready_i      ( r_dp_ready_i ),
-        .ar_req_i          ( ar_req_i ),
-        .ar_valid_i        ( ar_valid_i ),
-        .ar_ready_o        ( ar_ready_o_0 ),
+        .r_dp_valid_i      ( (r_dp_req_i.src_protocol == idma_pkg::AXI) & r_dp_valid_i ),
+        .r_dp_ready_o      ( axi_r_dp_ready_0 ),
+        .r_dp_rsp_o        ( axi_r_dp_rsp_0 ),
+        .r_dp_valid_o      ( axi_r_dp_valid_0 ),
+        .r_dp_ready_i      ( (r_dp_req_i.src_protocol == idma_pkg::AXI) & r_dp_ready_i ),
+        .ar_req_i          ( ar_req_i.ar_req ),
+        .ar_valid_i        ( (ar_req_i.src_protocol == idma_pkg::AXI) & ar_valid_i ),
+        .ar_ready_o        ( axi_ar_ready_0 ),
         .read_req_o        ( axi_read_req_o_0 ),
         .read_rsp_i        ( axi_read_rsp_i_0 ),
-        .r_chan_valid_o    ( r_chan_valid_o_0 ),
-        .r_chan_ready_o    ( r_chan_ready_o_0 ),
-        .buffer_in_o       ( buffer_in_0 ),
-        .buffer_in_valid_o ( buffer_in_valid_0 ),
+        .r_chan_valid_o    ( axi_r_chan_valid_0 ),
+        .r_chan_ready_o    ( axi_r_chan_ready_0 ),
+        .buffer_in_o       ( axi_buffer_in_0 ),
+        .buffer_in_valid_o ( axi_buffer_in_valid_0 ),
         .buffer_in_ready_i ( buffer_in_ready )
     );
 
@@ -194,23 +214,115 @@ module idma_transport_layer_rw_axi #(
         .clk_i             ( clk_i      ),
         .rst_ni            ( rst_ni     ),
         .r_dp_req_i        ( r_dp_req_i ),
-        .r_dp_valid_i      ( r_dp_valid_i ),
-        .r_dp_ready_o      ( r_dp_ready_o_1 ),
-        .r_dp_rsp_o        ( r_dp_rsp_o_1 ),
-        .r_dp_valid_o      ( r_dp_valid_o_1 ),
-        .r_dp_ready_i      ( r_dp_ready_i ),
-        .ar_req_i          ( ar_req_i ),
-        .ar_valid_i        ( ar_valid_i ),
-        .ar_ready_o        ( ar_ready_o_1 ),
+        .r_dp_valid_i      ( (r_dp_req_i.src_protocol == idma_pkg::AXI) & r_dp_valid_i ),
+        .r_dp_ready_o      ( axi_r_dp_ready_1 ),
+        .r_dp_rsp_o        ( axi_r_dp_rsp_1 ),
+        .r_dp_valid_o      ( axi_r_dp_valid_1 ),
+        .r_dp_ready_i      ( (r_dp_req_i.src_protocol == idma_pkg::AXI) & r_dp_ready_i ),
+        .ar_req_i          ( ar_req_i.ar_req ),
+        .ar_valid_i        ( (ar_req_i.src_protocol == idma_pkg::AXI) & ar_valid_i ),
+        .ar_ready_o        ( axi_ar_ready_1 ),
         .read_req_o        ( axi_read_req_o_1 ),
         .read_rsp_i        ( axi_read_rsp_i_1 ),
-        .r_chan_valid_o    ( r_chan_valid_o_1 ),
-        .r_chan_ready_o    ( r_chan_ready_o_1 ),
-        .buffer_in_o       ( buffer_in_1 ),
-        .buffer_in_valid_o ( buffer_in_valid_1 ),
+        .r_chan_valid_o    ( axi_r_chan_valid_1 ),
+        .r_chan_ready_o    ( axi_r_chan_ready_1 ),
+        .buffer_in_o       ( axi_buffer_in_1 ),
+        .buffer_in_valid_o ( axi_buffer_in_valid_1 ),
         .buffer_in_ready_i ( buffer_in_ready )
     );
 
+
+    idma_obi_read #(
+        .StrbWidth        ( StrbWidth           ),
+        .byte_t           ( byte_t              ),
+        .strb_t           ( strb_t              ),
+        .r_dp_req_t       ( r_dp_req_t          ),
+        .r_dp_rsp_t       ( r_dp_rsp_t          ),
+        .read_meta_chan_t ( read_meta_channel_t ),
+        .read_req_t       ( obi_req_t           ),
+        .read_rsp_t       ( obi_rsp_t           )
+    ) i_idma_obi_read (
+        .r_dp_req_i        ( r_dp_req_i ),
+        .r_dp_valid_i      ( (r_dp_req_i.src_protocol == idma_pkg::OBI) & r_dp_valid_i ),
+        .r_dp_ready_o      ( obi_r_dp_ready ),
+        .r_dp_rsp_o        ( obi_r_dp_rsp ),
+        .r_dp_valid_o      ( obi_r_dp_valid ),
+        .r_dp_ready_i      ( (r_dp_req_i.src_protocol == idma_pkg::OBI) & r_dp_ready_i ),
+        .read_meta_req_i   ( ar_req_i.ar_req ),
+        .read_meta_valid_i ( (ar_req_i.src_protocol == idma_pkg::OBI) & ar_valid_i ),
+        .read_meta_ready_o ( obi_ar_ready ),
+        .read_req_o        ( obi_read_req_o ),
+        .read_rsp_i        ( obi_read_rsp_i ),
+        .r_chan_valid_o    ( obi_r_chan_valid ),
+        .r_chan_ready_o    ( obi_r_chan_ready ),
+        .buffer_in_o       ( obi_buffer_in ),
+        .buffer_in_valid_o ( obi_buffer_in_valid ),
+        .buffer_in_ready_i ( buffer_in_ready )
+    );
+    //--------------------------------------
+    // Read Multiplexers
+    //--------------------------------------
+    // to be put in some multiplexer later
+    assign axi_read_req_o = axi_read_req_o_0;
+
+    always_comb begin : gen_read_meta_channel_multiplexer
+        case(ar_req_i.src_protocol)
+        idma_pkg::AXI: ar_ready_o = axi_ar_ready_0;
+        idma_pkg::OBI: ar_ready_o = obi_ar_ready;
+        default:       ar_ready_o = 1'b0;
+        endcase
+    end
+
+    always_comb begin : gen_read_multiplexer
+        if (r_dp_valid_i) begin
+            case(r_dp_req_i.src_protocol)
+            idma_pkg::AXI: begin
+                    // To be changed later using another multiplexer for the same protocol.
+                    r_chan_valid_o  = axi_r_chan_valid_0;
+                    r_chan_ready_o  = axi_r_chan_ready_0;
+
+                    r_dp_ready_o    = axi_r_dp_ready_0;
+                    r_dp_rsp_o      = axi_r_dp_rsp_0;
+                    r_dp_valid_o    = axi_r_dp_valid_0;
+
+                    buffer_in       = axi_buffer_in_0;
+                    buffer_in_valid = axi_buffer_in_valid_0;
+            end
+            idma_pkg::OBI: begin
+                r_chan_valid_o  = obi_r_chan_valid;
+                r_chan_ready_o  = obi_r_chan_ready;
+
+                    r_dp_ready_o    = obi_r_dp_ready;
+                    r_dp_rsp_o      = obi_r_dp_rsp;
+                    r_dp_valid_o    = obi_r_dp_valid;
+
+                buffer_in       = obi_buffer_in;
+                buffer_in_valid = obi_buffer_in_valid;
+            end
+            default: begin
+                r_chan_valid_o  = 1'b0;
+                r_chan_ready_o  = 1'b0;
+
+                r_dp_ready_o    = 1'b0;
+                r_dp_rsp_o      = '0;
+                r_dp_valid_o    = 1'b0;
+
+                buffer_in       = '0;
+                buffer_in_valid = '0;
+            end
+            endcase
+        end else begin
+            r_chan_valid_o  = 1'b0;
+            r_chan_ready_o  = 1'b0;
+
+            r_dp_ready_o    = 1'b0;
+            r_dp_rsp_o      = '0;
+            r_dp_valid_o    = 1'b0;
+
+            buffer_in       = '0;
+            buffer_in_valid = '0;
+        end
+    end
 
     //--------------------------------------
     // Read Barrel shifter

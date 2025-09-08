@@ -12,7 +12,7 @@
 
 
 /// The iDMA backend implements an arbitrary 1D copy engine
-module idma_backend_rw_axi #(
+module idma_backend_r_axi_r_obi_w_axi #(
     /// Data width
     parameter int unsigned DataWidth        = 32'd16,
     /// Address width
@@ -36,7 +36,7 @@ module idma_backend_rw_axi #(
     /// will no longer be word aligned, but only a single shifter is needed
     parameter bit          CombinedShifter  = 1'b0,
     /// Should the `R`-`AW` coupling hardware be present? (recommended)
-    parameter bit          RAWCouplingAvail = 1'b1,
+    parameter bit          RAWCouplingAvail = 1'b0,
     /// Mask invalid data on the manager interface
     parameter bit MaskInvalidData            = 1'b1,
     /// Should hardware legalization be present? (recommended)
@@ -60,6 +60,9 @@ module idma_backend_rw_axi #(
     /// AXI4+ATOP Request and Response channel type
     parameter type axi_req_t = logic,
     parameter type axi_rsp_t = logic,
+    /// OBI Request and Response channel type
+    parameter type obi_req_t = logic,
+    parameter type obi_rsp_t = logic,
     /// Address Read Channel type
     parameter type read_meta_channel_t  = logic,
     /// Address Write Channel type
@@ -103,6 +106,11 @@ module idma_backend_rw_axi #(
     /// AXI4+ATOP read responses
     input axi_rsp_t axi_read_i_0,
     input axi_rsp_t axi_read_i_1,
+
+    /// OBI read request
+    output obi_req_t obi_read_o,
+    /// OBI read response
+    input obi_rsp_t obi_read_i,
 
 
     /// AXI4+ATOP write request
@@ -191,6 +199,10 @@ module idma_backend_rw_axi #(
         r_dp_req_t          r_dp_req;
         read_meta_channel_t ar_req;
     } idma_r_req_t;
+    typedef struct packed {
+        idma_pkg::protocol_e src_protocol;
+        read_meta_channel_t  ar_req;
+    } read_meta_channel_tagged_t;
 
     /// The iDMA write request bundles an `AW` type and a datapath write response type together. It
     /// has an additional flags:
@@ -246,6 +258,7 @@ module idma_backend_rw_axi #(
     idma_w_req_t w_req;
     logic        r_valid, w_valid;
     logic        r_ready, w_ready;
+    read_meta_channel_tagged_t  r_meta_req_tagged;
 
     // It the current transfer the last burst in the 1D transfer?
     logic w_last_burst;
@@ -277,7 +290,7 @@ module idma_backend_rw_axi #(
     write_meta_channel_t aw_req_dp;
 
     // Ax request from the decoupling stage to the datapath
-    read_meta_channel_t ar_req_dp;
+    read_meta_channel_tagged_t ar_req_dp;
 
     // flush and preemptively empty the legalizer
     logic legalizer_flush, legalizer_kill;
@@ -338,7 +351,7 @@ module idma_backend_rw_axi #(
     //--------------------------------------
     if (HardwareLegalizer) begin : gen_hw_legalizer
         // hardware legalizer is present
-        idma_legalizer_rw_axi #(
+        idma_legalizer_r_axi_r_obi_w_axi #(
             .CombinedShifter   ( CombinedShifter   ),
             .DataWidth         ( DataWidth         ),
             .AddrWidth         ( AddrWidth         ),
@@ -427,45 +440,11 @@ module idma_backend_rw_axi #(
     // Error handler
     //--------------------------------------
     if (ErrorCap == idma_pkg::ERROR_HANDLING) begin : gen_error_handler
-        idma_error_handler #(
-            .MetaFifoDepth ( MetaFifoDepth ),
-            .PrintFifoInfo ( PrintFifoInfo ),
-            .idma_rsp_t    ( idma_rsp_t    ),
-            .idma_eh_req_t ( idma_eh_req_t ),
-            .addr_t        ( addr_t        ),
-            .r_dp_rsp_t    ( r_dp_rsp_t    ),
-            .w_dp_rsp_t    ( w_dp_rsp_t    )
-        ) i_idma_error_handler (
-            .clk_i             ( clk_i              ),
-            .rst_ni            ( rst_ni             ),
-            .testmode_i        ( testmode_i         ),
-            .rsp_o             ( idma_rsp           ),
-            .rsp_valid_o       ( rsp_valid          ),
-            .rsp_ready_i       ( rsp_ready          ),
-            .req_valid_i       ( req_valid          ),
-            .req_ready_i       ( req_ready_o        ),
-            .eh_i              ( idma_eh_req_i      ),
-            .eh_valid_i        ( eh_req_valid_i     ),
-            .eh_ready_o        ( eh_req_ready_o     ),
-            .r_addr_i          ( r_req.ar_req.axi.ar_chan.addr ),
-            .w_addr_i          ( w_req.aw_req.axi.aw_chan.addr ),
-            .r_consume_i       ( r_valid & r_ready  ),
-            .w_consume_i       ( w_valid & w_ready  ),
-            .legalizer_flush_o ( legalizer_flush    ),
-            .legalizer_kill_o  ( legalizer_kill     ),
-            .dp_busy_i         ( dp_busy            ),
-            .dp_poison_o       ( dp_poison          ),
-            .r_dp_rsp_i        ( r_dp_rsp           ),
-            .r_dp_valid_i      ( r_dp_rsp_valid     ),
-            .r_dp_ready_o      ( r_dp_rsp_ready     ),
-            .w_dp_rsp_i        ( w_dp_rsp           ),
-            .w_dp_valid_i      ( w_dp_rsp_valid     ),
-            .w_dp_ready_o      ( w_dp_rsp_ready     ),
-            .w_last_burst_i    ( w_last_burst       ),
-            .w_super_last_i    ( w_super_last       ),
-            .fsm_busy_o        ( busy_o.eh_fsm_busy ),
-            .cnt_busy_o        ( busy_o.eh_cnt_busy )
-        );
+        `IDMA_NONSYNTH_BLOCK(
+        initial begin
+            $fatal(1, "Error Handling only implemented for AXI to AXI DMA!");
+        end
+        )
     end else if (ErrorCap == idma_pkg::NO_ERROR_HANDLING) begin : gen_no_error_handler
         // bypass the signals, assign their neutral values
         assign idma_rsp.error     = 1'b0;
@@ -539,9 +518,13 @@ module idma_backend_rw_axi #(
 
     // Add fall-through register to allow the input to be ready if the output is not. This
     // does not add a cycle of delay
+    always_comb begin : assign_r_meta_req
+        r_meta_req_tagged.src_protocol = r_req.r_dp_req.src_protocol;
+        r_meta_req_tagged.ar_req       = r_req.ar_req;
+    end
 
     fall_through_register #(
-        .T          ( read_meta_channel_t )
+        .T          ( read_meta_channel_tagged_t )
     ) i_ar_fall_through_register (
         .clk_i      ( clk_i             ),
         .rst_ni     ( rst_ni            ),
@@ -549,7 +532,7 @@ module idma_backend_rw_axi #(
         .clr_i      ( 1'b0              ),
         .valid_i    ( r_valid           ),
         .ready_o    ( ar_ready          ),
-        .data_i     ( r_req.ar_req ),
+        .data_i     ( r_meta_req_tagged ),
         .valid_o    ( ar_valid_dp       ),
         .ready_i    ( ar_ready_dp       ),
         .data_o     ( ar_req_dp         )
@@ -580,7 +563,7 @@ module idma_backend_rw_axi #(
     //--------------------------------------
     // Transport Layer / Datapath
     //--------------------------------------
-    idma_transport_layer_rw_axi #(
+    idma_transport_layer_r_axi_r_obi_w_axi #(
         .NumAxInFlight               ( NumAxInFlight               ),
         .DataWidth                   ( DataWidth                   ),
         .BufferDepth                 ( BufferDepth                 ),
@@ -592,8 +575,11 @@ module idma_backend_rw_axi #(
         .w_dp_rsp_t                  ( w_dp_rsp_t                  ),
         .write_meta_channel_t        ( write_meta_channel_t        ),
         .read_meta_channel_t         ( read_meta_channel_t         ),
+        .read_meta_channel_tagged_t  ( read_meta_channel_tagged_t  ),
         .axi_req_t                   ( axi_req_t                   ),
-        .axi_rsp_t                   ( axi_rsp_t                   )
+        .axi_rsp_t                   ( axi_rsp_t                   ),
+        .obi_req_t                   ( obi_req_t                   ),
+        .obi_rsp_t                   ( obi_rsp_t                   )
     ) i_idma_transport_layer (
         .clk_i           ( clk_i                ),
         .rst_ni          ( rst_ni               ),
@@ -602,6 +588,8 @@ module idma_backend_rw_axi #(
         .axi_read_rsp_i_0  ( axi_read_rsp_i_0       ),
         .axi_read_req_o_1  ( axi_read_req_o_1       ),
         .axi_read_rsp_i_1  ( axi_read_rsp_i_1       ),
+        .obi_read_req_o  ( obi_read_req_o       ),
+        .obi_read_rsp_i  ( obi_read_rsp_i       ),
 ,
         .axi_write_req_o ( axi_write_req_o      ),
         .axi_write_rsp_i ( axi_write_rsp_i      ),
@@ -636,31 +624,11 @@ module idma_backend_rw_axi #(
     //--------------------------------------
 
     if (RAWCouplingAvail) begin : gen_r_aw_coupler
-        // instantiate the channel coupler
-        idma_channel_coupler #(
-            .NumAxInFlight   ( NumAxInFlight               ),
-            .AddrWidth       ( AddrWidth                   ),
-            .UserWidth       ( UserWidth                   ),
-            .AxiIdWidth      ( AxiIdWidth                  ),
-            .PrintFifoInfo   ( PrintFifoInfo               ),
-            .axi_aw_chan_t   ( write_meta_channel_t        )
-        ) i_idma_channel_coupler (
-            .clk_i            ( clk_i                       ),
-            .rst_ni           ( rst_ni                      ),
-            .testmode_i       ( testmode_i                  ),
-            .r_rsp_valid_i    ( r_chan_valid                ),
-            .r_rsp_ready_i    ( r_chan_ready                ),
-            .r_rsp_first_i    ( r_dp_rsp.first              ),
-            .r_decouple_aw_i  ( r_dp_req_out.decouple_aw    ),
-            .aw_decouple_aw_i ( w_req.decouple_aw ),
-            .aw_req_i         ( w_req.aw_req                ),
-            .aw_valid_i       ( w_valid                     ),
-            .aw_ready_o       ( aw_ready                    ),
-            .aw_req_o         ( aw_req_dp                   ),
-            .aw_valid_o       ( aw_valid_dp                 ),
-            .aw_ready_i       ( aw_ready_dp                 ),
-            .busy_o           ( busy_o.raw_coupler_busy     )
-        );
+        `IDMA_NONSYNTH_BLOCK(
+        initial begin
+            $fatal(1, "Channel Coupler only implemented for AXI DMAs!");
+        end
+        )
     end else begin : gen_r_aw_bypass
         // Add fall-through register to allow the input to be ready if the output is not. This
         // does not add a cycle of delay
